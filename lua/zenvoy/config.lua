@@ -4,10 +4,10 @@ M.config = {
   wrap_folder_navigation = false,
   icons_enable = true,
   keymaps = {
-    listing = {
-      ['q'] = "close",
-      ['<CR>'] = "enter_email"
-    },
+    ['q'] = "close_or_back",
+    ['c'] = "compose",
+    ['r'] = "reply",
+    ['<CR>'] = "enter"
   },
 }
 
