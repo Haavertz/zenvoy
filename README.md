@@ -13,7 +13,7 @@
 Install the plugins with your prefered plugin manager. For example, with [Lazy-Nvim](https://github.com/rtgiskard/lazyNvim)
 ``` 
 return {
-    "github.com/Haavertz/zenvoy",
+    "Haavertz/zenvoy",
     branch = "*" 
     opts = {},
 }
