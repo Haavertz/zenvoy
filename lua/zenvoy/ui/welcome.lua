@@ -4,7 +4,7 @@ local Popup = require("nui.popup")
 local Line = require("nui.line")
 local Text = require("nui.text")
 
-function M.show_welcome()
+function M.show_welcome(on_close)
     local main_win = vim.api.nvim_get_current_win()
 
     local total_height = vim.api.nvim_win_get_height(main_win)
@@ -72,6 +72,9 @@ function M.show_welcome()
     for _, key in ipairs(close_keys) do
         popup:map("n", key, function()
             popup:unmount()
+            if on_close then
+              on_close()
+            end
         end, { noremap = true })
     end
 end

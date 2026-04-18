@@ -1,6 +1,7 @@
 local config = require("zenvoy.config")
 local state = require("zenvoy.states")
 local welcome = require("zenvoy.ui.welcome")
+local layout = require("zenvoy.ui.layout")
 
 local M = {}
 local state_file = vim.fn.stdpath("data") .. "/zenvoy_welcome_seen"
@@ -13,8 +14,12 @@ function M.open()
   if state.is_open then return end
 
   if vim.fn.filereadable(state_file) == 0 then
-    welcome.show_welcome()
+    welcome.show_welcome(function ()
+      layout.create()
+    end)
     vim.fn.writefile({"seen"}, state_file)
+  else
+    layout.create()
   end
 
 end
