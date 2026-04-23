@@ -62,8 +62,8 @@ function M.create()
     main:update(Layout.Box({
       Layout.Box(aside, { size = aside_pct .. "%" }),
       Layout.Box({
-        Layout.Box(email, { size = "40%" }),
-        Layout.Box(envelope_email, { size = "61%" })
+        Layout.Box(email, { size = "50%" }),
+        Layout.Box(envelope_email, { size = "50%" })
       }, { dir = "col", size = email_pct .. "%" })
     }, { dir = "row" }))
   end
