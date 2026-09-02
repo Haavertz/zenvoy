@@ -1,8 +1,10 @@
+local state = require('zenvoy.states')
 local M = {}
 
 M.config = {
   wrap_folder_navigation = false,
   icons_enable = true,
+  aside_w = state.aside,
   keymaps = {
     ['q'] = "close_or_back",
     ['c'] = "compose",
