@@ -4,7 +4,7 @@ local welcome = require("zenvoy.ui.welcome")
 local layout = require("zenvoy.ui.layout")
 
 local M = {}
-local state_file = vim.fn.stdpath("data") .. "/zenvoy_welcome_seen"
+local state_file = vim.fn.stdpath("data") .. "/voy_seen"
 
 function M.setup(opts)
   config.setup(opts)
@@ -22,6 +22,10 @@ function M.open()
     layout.create()
   end
 
+end
+
+function M.close()
+  layout.close()
 end
 
 return M

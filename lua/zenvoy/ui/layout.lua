@@ -10,10 +10,6 @@ local Text = require("nui.text")
 local augroup = vim.api.nvim_create_augroup("ZenvoyLayout", { clear = true })
 local modal_windows = {}
 
-local function clamp(value, min, max)
-  return math.max(min, math.min(max, value))
-end
-
 local function get_size()
   local columns = vim.o.columns
   local lines = vim.o.lines
@@ -25,35 +21,35 @@ local function get_size()
   }
 end
 
-local function create_boxes(aside, email, envelope_email, aside_pct, email_pct, stacked)
+local function create_boxes(sidebar, listing, email, sidebar_width, stacked, email_visible)
   if stacked then
-    if state.sidebar_popup then
+    if email_visible then
       return Layout.Box({
-        Layout.Box(aside, { size = "25%" }),
-        Layout.Box(email, { size = "35%" }),
-        Layout.Box(envelope_email, { size = "40%" }),
+        Layout.Box(sidebar, { size = "25%" }),
+        Layout.Box(listing, { size = "35%" }),
+        Layout.Box(email, { size = "40%" }),
       }, { dir = "col" })
     end
 
     return Layout.Box({
-      Layout.Box(aside, { size = "35%" }),
-      Layout.Box(email, { size = "65%" }),
+      Layout.Box(sidebar, { size = "35%" }),
+      Layout.Box(listing, { size = "65%" }),
     }, { dir = "col" })
   end
 
-  if state.sidebar_popup then
+  if email_visible then
     return Layout.Box({
-      Layout.Box(aside, { size = aside_pct .. "%" }),
+      Layout.Box(sidebar, { size = sidebar_width }),
       Layout.Box({
-        Layout.Box(email, { size = "50%" }),
-        Layout.Box(envelope_email, { size = "50%" })
-      }, { dir = "col", size = email_pct .. "%" })
+        Layout.Box(listing, { size = "50%" }),
+        Layout.Box(email, { size = "50%" })
+      }, { dir = "col", grow = 1 })
     }, { dir = "row" })
   end
 
   return Layout.Box({
-    Layout.Box(aside, { size = aside_pct .. "%" }),
-    Layout.Box(email, { size = email_pct .. "%" }),
+    Layout.Box(sidebar, { size = sidebar_width }),
+    Layout.Box(listing, { grow = 1 }),
   }, { dir = "row" })
 end
 
@@ -71,7 +67,7 @@ local function remember_windows(...)
   modal_windows = {}
 
   for _, popup in ipairs({ ... }) do
-    if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
+    if popup and popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
       table.insert(modal_windows, popup.winid)
     end
   end
@@ -81,6 +77,81 @@ local function focus_popup(popup)
   if popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
     vim.api.nvim_set_current_win(popup.winid)
   end
+end
+
+local function update_layout()
+  if not state.layout then
+    return
+  end
+
+  local size = get_size()
+  local sidebar_width = config.config.sidebar.width or 30
+
+  state.layout:update({
+    position = "50%",
+    relative = "editor",
+    size = {
+      width = size.width,
+      height = size.height,
+    },
+  }, create_boxes(
+    state.sidebar_popup,
+    state.main_popup,
+    state.email_popup,
+    sidebar_width,
+    size.stacked,
+    state.email_visible
+  ))
+
+  remember_windows(
+    state.sidebar_popup,
+    state.main_popup,
+    state.email_visible and state.email_popup or nil
+  )
+end
+
+function M.close()
+  local active_layout = state.layout
+  if not active_layout then
+    return
+  end
+
+  vim.api.nvim_clear_autocmds({ group = augroup })
+  modal_windows = {}
+  state.is_open = false
+  -- state.email_visible = false
+  state.layout = nil
+  state.sidebar = nil
+  state.sidebar_popup = nil
+  state.main = nil
+  state.main_popup = nil
+  state.email = nil
+  state.email_popup = nil
+
+  active_layout:unmount()
+end
+
+function M.show_email()
+  if not state.layout or not state.email_popup then
+    return
+  end
+
+  if not state.email_visible then
+    state.email_visible = true
+    update_layout()
+  end
+
+  focus_popup(state.email_popup)
+end
+
+function M.hide_email()
+  if not state.layout or not state.email_visible then
+    return
+  end
+
+  state.email_visible = false
+  update_layout()
+  focus_popup(state.main_popup)
 end
 
 ---@param title string 
@@ -110,20 +181,14 @@ local function create_popup(title)
 end
 
 function M.create()
-  local aside = create_popup("Folders")
-  local email = create_popup("Emails")
+  local aside = create_popup("Folder")
+  local email = create_popup("Email")
   local envelope_email = create_popup("Name Email")
   local size = get_size()
 
-  local aside_w = config.config.aside_w or state.aside
-  local aside_pct = (type(aside_w) == "number" and aside_w > 0 and aside_w < 100)
-      and aside_w
-      or 20
-  aside_pct = clamp(aside_pct, 18, 35)
-  local email_pct = 100 - aside_pct
+  local sidebar_width = config.config.sidebar.width or 30
 
-  local main = Layout(
-    {
+  local main = Layout({
       position = "50%",
       relative = "editor",
       size = {
@@ -131,28 +196,25 @@ function M.create()
         height = size.height,
       },
     },
-    create_boxes(aside, email, envelope_email, aside_pct, email_pct, size.stacked)
+    create_boxes(aside, email, envelope_email, sidebar_width, size.stacked, state.email_visible) -- remove state.email_visible and set up true
   )
 
   main:mount()
+  state.layout = main
+  state.sidebar = aside.bufnr
+  state.sidebar_popup = aside
+  state.main = email.bufnr
+  state.main_popup = email
+  state.email = envelope_email.bufnr
+  state.email_popup = envelope_email
   state.is_open = true
 
-  remember_windows(aside, email, envelope_email)
+  vim.bo[aside.bufnr].filetype = "zenvoy-folder-listing"
+  vim.bo[email.bufnr].filetype = "zenvoy-envelope-listing"
+  vim.bo[envelope_email.bufnr].filetype = "zenvoy-email"
+
+  remember_windows(aside, email)
   focus_popup(email)
-
-  local function close()
-    vim.api.nvim_clear_autocmds({ group = augroup })
-    state.is_open = false
-    modal_windows = {}
-    main:unmount()
-  end
-
-  for _, popup in ipairs({ aside, email, envelope_email }) do
-    if popup.bufnr and vim.api.nvim_buf_is_valid(popup.bufnr) then
-      popup:map("n", "q", close, { noremap = true })
-      popup:map("n", "<Esc>", close, { noremap = true })
-    end
-  end
 
   vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter" }, {
     group = augroup,
@@ -172,10 +234,8 @@ function M.create()
   vim.api.nvim_create_autocmd("VimResized", {
     group = augroup,
     callback = function()
-      local resized = get_size()
-      main:update(create_boxes(aside, email, envelope_email, aside_pct, email_pct, resized.stacked))
-      remember_windows(aside, email, envelope_email)
-      focus_popup(email)
+      update_layout()
+      focus_popup(state.email_visible and state.email_popup or state.main_popup)
     end,
   })
 

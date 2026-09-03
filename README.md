@@ -19,7 +19,7 @@ Install the plugins with your prefered plugin manager. For example, with [Lazy-N
 ``` 
 return {
     "Haavertz/zenvoy",
-    depedences = {
+    dependencies = {
         "MunifTanjim/nui.nvim",
     },
     opts = {},

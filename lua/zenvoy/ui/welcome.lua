@@ -38,20 +38,22 @@ function M.show_welcome(on_close)
     popup:mount()
     local lines = {}
 
+    local ti = table.insert
+
     local title = Line()
     title:append("Welcome to Zenvoy! 📫", "Directory")
-    table.insert(lines, title)
-    table.insert(lines, Line())
+    ti(lines, title)
+    ti(lines, Line())
 
-    table.insert(lines, Line({ Text("Your email workflow, now completely keyboard-driven.", "String") }))
-    table.insert(lines, Line({ Text("Stay focused. No context switching, just a zen inbox.") }))
-    table.insert(lines, Line())
+    ti(lines, Line({ Text("Your email workflow, now completely keyboard-driven.", "String") }))
+    ti(lines, Line({ Text("Stay focused. No context switching, just a zen inbox.") }))
+    ti(lines, Line())
 
-    table.insert(lines, Line({ Text("Quick start", "Directory") }))
-    table.insert(lines, Line({ Text("  j/k  | navigate      <CR> | open email") }))
-    table.insert(lines, Line({ Text("  c    | compose         r  | reply") }))
-    table.insert(lines, Line({ Text("  q    | close") }))
-    table.insert(lines, Line())
+    ti(lines, Line({ Text("Quick start", "Directory") }))
+    ti(lines, Line({ Text("  j/k  | navigate      <CR> | open email") }))
+    ti(lines, Line({ Text("  c    | compose         r  | reply") }))
+    ti(lines, Line({ Text("  q    | close") }))
+    ti(lines, Line())
 
     local tip_line = Line()
     tip_line:append("Tip: ", "WarningMsg")
@@ -60,8 +62,8 @@ function M.show_welcome(on_close)
     tip_line:append(" anytime to see all available keybindings.", "Comment")
     table.insert(lines, tip_line)
 
-    table.insert(lines, Line())
-    table.insert(lines, Line({ Text("Press any key to enter your inbox...", "Comment") }))
+    ti(lines, Line())
+    ti(lines, Line({ Text("Press any key to enter your inbox...", "Comment") }))
 
     for i, line in ipairs(lines) do
         line:render(popup.bufnr, -1, i)
