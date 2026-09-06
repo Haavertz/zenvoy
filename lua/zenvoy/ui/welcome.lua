@@ -3,14 +3,26 @@ local M = {}
 local Popup = require("nui.popup")
 local Line = require("nui.line")
 local Text = require("nui.text")
+local config = require("zenvoy.config")
+local keymaps = require("zenvoy.keymaps")
 
-function M.show_welcome(on_close)
+local function key_label(action_name)
+    local keys = keymaps.keys_for(config.get().keymaps, action_name)
+
+    if #keys == 0 then
+        return "-"
+    end
+
+    return table.concat(keys, "/")
+end
+
+function M.create(on_close)
     local main_win = vim.api.nvim_get_current_win()
 
     local total_height = vim.api.nvim_win_get_height(main_win)
     local total_width = vim.api.nvim_win_get_width(main_win)
 
-    local win_w = math.ceil(total_width * 0.3)
+    local win_w = math.ceil(total_width * 0.2)
     local win_h = math.ceil(total_height * 0.55)
 
     local popup = Popup({
@@ -50,9 +62,9 @@ function M.show_welcome(on_close)
     ti(lines, Line())
 
     ti(lines, Line({ Text("Quick start", "Directory") }))
-    ti(lines, Line({ Text("  j/k  | navigate      <CR> | open email") }))
-    ti(lines, Line({ Text("  c    | compose         r  | reply") }))
-    ti(lines, Line({ Text("  q    | close") }))
+    ti(lines, Line({ Text(string.format("  j/k | navigate      %s | open email", key_label("enter"))) }))
+    ti(lines, Line({ Text(string.format("  %s | compose       %s | reply", key_label("compose"), key_label("reply"))) }))
+    ti(lines, Line({ Text(string.format("  %s | close or go back", key_label("close_or_back"))) }))
     ti(lines, Line())
 
     local tip_line = Line()

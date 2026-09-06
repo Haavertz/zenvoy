@@ -1,29 +1,27 @@
-local M = {}
-
-M.config = {
+local defaults = {
    sidebar = {
       width = 30,
    },
-   wrap_folder_navigation = true,
-   icons_enable = true,
+   wrap_folder_navigation = false,
+   icons_enable = false,
    keymaps = {
-      listing = {
-         ["q"] = "close",
-         ["<Esc>"] = "close",
-         ["c"] = "compose",
-         ["r"] = "reply",
-         ["<CR>"] = "open_email",
-      },
-      email = {
-         ["q"] = "close",
-         ["<Esc>"] = "close",
-         ["<BS>"] = "close_email",
-      },
+      ["q"] = "close_or_back",
+      ["c"] = false,
+      ["r"] = false,
+      ["<CR>"] = "enter",
    },
 }
 
+local M = {
+   config = vim.deepcopy(defaults),
+}
+
 function M.setup(opts)
-   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+   M.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+end
+
+function M.get()
+   return M.config
 end
 
 return M

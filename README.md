@@ -12,6 +12,7 @@ A minimal terminal email client for people who live in Neovim.
 - [Neovim](https://neovim.io/doc/install/) >= v0.10.0
 - [Himalaya](https://github.com/pimalaya/himalaya) >= v1.2.0
 - [Nui](https://github.com/pimalaya/himalaya) >= 0.4.0
+- [Golang](https://go.dev/doc/tutorial/getting-started#install) >= 1.27
 
 ### Install 
 
