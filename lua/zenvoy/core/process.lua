@@ -38,6 +38,11 @@ local function handle_result(result, callbacks)
       return
    end
 
+   if type(response.envelopes) ~= "table" then
+      on_error("Invalid Zenvoy JSON: missing envelopes array")
+      return
+   end
+
    if callbacks.on_success then
       callbacks.on_success(response)
    end

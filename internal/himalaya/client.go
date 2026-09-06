@@ -74,3 +74,24 @@ func (client Client) ListMailboxes(ctx context.Context) (email.ListResponse, err
 
 	return response, nil
 }
+
+func (client Client) ListEnvelopes(ctx context.Context) (email.EnvelopeListResponse, error) {
+	output, err := client.runner.Run(
+		ctx,
+		"envelope",
+		"list",
+		"-s",
+		"50",
+		"--json",
+	)
+	if err != nil {
+		return email.EnvelopeListResponse{}, fmt.Errorf("list Himalaya envelopes: %w", err)
+	}
+
+	var response email.EnvelopeListResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return email.EnvelopeListResponse{}, fmt.Errorf("decode Himalaya envelope JSON: %w", err)
+	}
+
+	return response, nil
+}

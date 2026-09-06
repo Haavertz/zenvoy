@@ -13,7 +13,7 @@ function M.create_popup(title)
     border = {
       style = "rounded",
       text = {
-        top = Text(string.format(" ■ %s ■ ", title), "FloatBorder"),
+        top = Text(string.format(" ■ %s ■ ", title), "FloatTitle"),
         top_align = "center",
       },
     },

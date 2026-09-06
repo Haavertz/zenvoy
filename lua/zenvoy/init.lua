@@ -16,14 +16,20 @@ function M.open()
       return nil
    end
 
-   local job = process.run({
+   local finish = layout.start_activity({ "Loading sidebar", "Loading emails" })
+   local function on_error(message)
+      if finish() then vim.notify("Zenvoy: " .. message, vim.log.levels.ERROR) end
+   end
+
+   local ok, job = pcall(process.run, {
       on_success = function(response)
+         if not finish() then return end
          layout.set_mailboxes(response.mailboxes)
+         layout.set_envelopes(response.envelopes)
       end,
-      on_error = function(message)
-         vim.notify("Zenvoy: " .. message, vim.log.levels.ERROR)
-      end,
+      on_error = on_error,
    })
+   if not ok then on_error(job) end
 
    if vim.fn.filereadable(state_file) == 0 then
       welcome.create(function()
@@ -34,7 +40,7 @@ function M.open()
       layout.create()
    end
 
-   return job
+   return ok and job or nil
 end
 
 function M.close()

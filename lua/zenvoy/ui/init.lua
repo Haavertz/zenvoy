@@ -6,6 +6,8 @@ local keymap = require("zenvoy.keymaps")
 local config = require("zenvoy.config")
 local command_factory = require("zenvoy.commands")
 local sidebar = require("zenvoy.ui.sidebar")
+local envelope = require("zenvoy.ui.envelope")
+local activity = require("zenvoy.ui.activity").new()
 
 local Layout = require("nui.layout")
 
@@ -22,7 +24,7 @@ local function create_box()
       return Layout.Box({
          Layout.Box(state.sidebar_popup, { size = sidebar_width }),
          Layout.Box({
-            Layout.Box(state.listing_popup, { size = "50%" }),
+            Layout.Box(state.listing_popup, { size = "50%", position = { row = 1, col = 3 }}),
             Layout.Box(state.email_popup, { grow = 1 }),
          }, { dir = "col", grow = 1 }),
       }, { dir = "row" })
@@ -46,13 +48,31 @@ local function apply_keymaps(popup)
    keymap.apply(popup.bufnr, config.get().keymaps, commands)
 end
 
-M.close = commands.close
+function M.close()
+   activity:clear()
+   commands.close()
+end
+
+---@param messages string|string[]
+---@return fun(): boolean
+function M.start_activity(messages)
+   return activity:start(messages)
+end
 
 function M.set_mailboxes(mailboxes)
    state.mailboxes = mailboxes or {}
 
    if state.sidebar_popup then
       sidebar.render(state.sidebar_popup.bufnr, state.mailboxes)
+   end
+end
+
+function M.set_envelopes(envelopes)
+   state.envelopes = envelopes or {}
+
+   if state.listing_popup then
+      state.listing_popup.border:set_text("top", (" ■ Emails (%d) ■ "):format(#state.envelopes), "center")
+      envelope.render(state.listing_popup.bufnr, state.envelopes)
    end
 end
 
@@ -82,12 +102,14 @@ function M.create()
    state.layout = main
    main:mount()
    state.is_open = true
+   activity:attach(state.sidebar_popup)
 
    vim.bo[state.sidebar_popup.bufnr].filetype = "zenvoy-folder-listing"
    vim.bo[state.listing_popup.bufnr].filetype = "zenvoy-envelope-listing"
    vim.bo[state.email_popup.bufnr].filetype = "zenvoy-email"
 
    sidebar.render(state.sidebar_popup.bufnr, state.mailboxes)
+   M.set_envelopes(state.envelopes)
 
    apply_keymaps(state.sidebar_popup)
    apply_keymaps(state.listing_popup)
