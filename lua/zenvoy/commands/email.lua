@@ -6,6 +6,7 @@ local M = {}
 ---@field focus fun(popup: table)
 ---@field current_buffer fun(): integer
 ---@field notify fun(message: string, level?: integer)
+---@field on_close? fun() Release resources owned by the UI session.
 
 ---@param context ZenvoyCommandContext
 ---@return table

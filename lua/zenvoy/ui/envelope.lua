@@ -119,7 +119,7 @@ function M.render(bufnr, envelopes)
    vim.bo[bufnr].filetype = "zenvoy-envelope-listing"
 
    if #envelopes == 0 then
-      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "No emails in this mailbox" })
       vim.bo[bufnr].modifiable = false
       vim.bo[bufnr].readonly = true
       vim.bo[bufnr].modified = false

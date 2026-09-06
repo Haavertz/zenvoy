@@ -7,6 +7,7 @@ function M.create(context, email_commands)
    local state = context.state
 
    local function close()
+      if context.on_close then context.on_close() end
       local active_layout = state.layout
 
       if not active_layout then

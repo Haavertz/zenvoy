@@ -1,5 +1,7 @@
 local config = require("zenvoy.config")
-local process = require("zenvoy.core.process")
+local Process = require("zenvoy.core.process")
+local Client = require("zenvoy.himalaya.client")
+local LoadMail = require("zenvoy.application.load_mail")
 local state = require("zenvoy.state")
 local welcome = require("zenvoy.ui.welcome")
 local layout = require("zenvoy.ui")
@@ -21,7 +23,10 @@ function M.open()
       if finish() then vim.notify("Zenvoy: " .. message, vim.log.levels.ERROR) end
    end
 
-   local ok, job = pcall(process.run, {
+   local options = config.get().himalaya
+   local process = Process.new({ timeout = options.timeout })
+   local loader = LoadMail.new(Client.new(process, options))
+   local ok, request = pcall(loader.run, loader, {
       on_success = function(response)
          if not finish() then return end
          layout.set_mailboxes(response.mailboxes)
@@ -29,7 +34,18 @@ function M.open()
       end,
       on_error = on_error,
    })
-   if not ok then on_error(job) end
+   if ok then
+      local pending = request
+      request = {
+         cancel = function()
+            finish()
+            pending:cancel()
+         end,
+      }
+      layout.track_request(request)
+   else
+      on_error(request)
+   end
 
    if vim.fn.filereadable(state_file) == 0 then
       welcome.create(function()
@@ -40,7 +56,7 @@ function M.open()
       layout.create()
    end
 
-   return ok and job or nil
+   return ok and request or nil
 end
 
 function M.close()

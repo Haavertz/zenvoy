@@ -8,6 +8,7 @@ local command_factory = require("zenvoy.commands")
 local sidebar = require("zenvoy.ui.sidebar")
 local envelope = require("zenvoy.ui.envelope")
 local activity = require("zenvoy.ui.activity").new()
+local pending_request
 
 local Layout = require("nui.layout")
 
@@ -36,12 +37,21 @@ local function create_box()
    }, { dir = "row" })
 end
 
+local function clear_session()
+   activity:clear()
+   if pending_request then
+      pending_request:cancel()
+      pending_request = nil
+   end
+end
+
 local commands = command_factory.create({
    state = state,
    create_box = create_box,
    focus = focus,
    current_buffer = vim.api.nvim_get_current_buf,
    notify = vim.notify,
+   on_close = clear_session,
 })
 
 local function apply_keymaps(popup)
@@ -49,8 +59,13 @@ local function apply_keymaps(popup)
 end
 
 function M.close()
-   activity:clear()
    commands.close()
+end
+
+---@param request ZenvoyRequest
+function M.track_request(request)
+   if pending_request then pending_request:cancel() end
+   pending_request = request
 end
 
 ---@param messages string|string[]
@@ -103,6 +118,13 @@ function M.create()
    main:mount()
    state.is_open = true
    activity:attach(state.sidebar_popup)
+   vim.api.nvim_create_autocmd("WinClosed", {
+      pattern = tostring(state.sidebar_popup.winid),
+      once = true,
+      callback = function()
+         if state.layout == main then M.close() end
+      end,
+   })
 
    vim.bo[state.sidebar_popup.bufnr].filetype = "zenvoy-folder-listing"
    vim.bo[state.listing_popup.bufnr].filetype = "zenvoy-envelope-listing"
