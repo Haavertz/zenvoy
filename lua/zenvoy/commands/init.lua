@@ -15,8 +15,10 @@ function M.create(context)
       enter = session_commands.enter,
       show_email = email_commands.show_email,
       hide_email = email_commands.hide_email,
-      -- compose = email_commands.compose,
-      -- reply = email_commands.reply,
+      compose = email_commands.compose,
+      reply = email_commands.reply,
+      reply_all = email_commands.reply_all,
+      focus_sidebar = session_commands.focus_sidebar,
    }
 end
 

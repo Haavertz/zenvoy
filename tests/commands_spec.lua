@@ -58,6 +58,9 @@ local function create_context()
       current_buffer = function()
          return observed.current_buffer
       end,
+      selected_envelope = function()
+         return { id = "selected-email", subject = "Selected email" }
+      end,
       notify = function(message)
          table.insert(observed.notifications, message)
       end,
@@ -130,12 +133,39 @@ test("uses enter according to the focused buffer", function()
    assert_equal("email-box", layout.updates[1], "email layout after enter")
 end)
 
-test("does not expose disabled email command placeholders", function()
-   local context = create_context()
+test("dispatches composition and replies with the selected message and mailbox", function()
+   local context, state = create_context()
+   local opened
+   context.on_compose = function(options) opened = options end
+   state.current_folder = "native/archive"
    local commands = load_commands(context)
+   commands.compose()
+   assert(vim.deep_equal({}, opened))
+   commands.reply()
+   assert(vim.deep_equal({ id = "selected-email", mailbox = "native/archive", all = false }, opened))
+   commands.reply_all()
+   assert_equal(true, opened.all, "reply-all context")
+   context.selected_envelope = function() return nil end
+   opened = nil
+   commands.reply()
+   assert_equal(nil, opened, "empty listing cannot reply")
+end)
 
-   assert_equal(nil, commands.compose, "compose command")
-   assert_equal(nil, commands.reply, "reply command")
+test("session close waits for the composer guard, while external close forces cleanup", function()
+   local context, state, layout = create_context()
+   local finish_close
+   context.request_close = function(done) finish_close = done end
+   local commands = load_commands(context)
+   commands.close()
+   assert_equal(true, state.is_open, "pending discard confirmation")
+   finish_close()
+   assert_equal(1, layout.unmount_count, "confirmed session cleanup")
+
+   context, state, layout = create_context()
+   context.request_close = function() error("external closure cannot wait for a hidden form") end
+   commands = load_commands(context)
+   commands.close(true)
+   assert_equal(1, layout.unmount_count, "forced session cleanup")
 end)
 
 if #failures > 0 then

@@ -7,12 +7,12 @@ local function child(code)
    return { vim.v.progpath, "--headless", "-u", "NONE", "-i", "NONE", "-n", "--cmd", "lua " .. code }
 end
 
-local function run(command, options)
+local function run(command, options, run_options)
    local result
    Process.new(options):run(command, function(err, output)
       assert(not vim.in_fast_event(), "callbacks must be safe to use Neovim APIs")
       result = { err = err, output = output }
-   end)
+   end, run_options)
    assert(vim.wait(3000, function() return result ~= nil end, 5), "child process did not finish")
    return result
 end
@@ -20,6 +20,12 @@ end
 t.test("captures actual child stdout", function()
    local result = run(child([[io.stdout:write('{"mailboxes":[]}'); vim.cmd('qa!')]]))
    t.equal({ output = '{"mailboxes":[]}' }, result)
+end)
+
+t.test("delivers multiline stdin to a real child and closes the input stream", function()
+   local body = "Olá\nsecond line\n"
+   local result = run(child([[io.stdout:write(io.stdin:read('*a')); vim.cmd('qa!')]]), nil, { stdin = body })
+   t.equal({ output = body }, result)
 end)
 
 t.test("reports actual child stderr and exit failure", function()

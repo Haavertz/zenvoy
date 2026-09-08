@@ -6,7 +6,7 @@ local M = {}
 function M.create(context, email_commands)
    local state = context.state
 
-   local function close()
+   local function close_now()
       if context.on_close then context.on_close() end
       local active_layout = state.layout
 
@@ -20,8 +20,22 @@ function M.create(context, email_commands)
       state.sidebar_popup = nil
       state.listing_popup = nil
       state.email_popup = nil
+      state.open_envelope = nil
 
       active_layout:unmount()
+   end
+
+   local function close(force)
+      if not force and context.request_close then
+         context.request_close(close_now)
+      else
+         close_now()
+      end
+   end
+
+   local function focus_sidebar()
+      context.focus(state.sidebar_popup)
+      if context.on_select_mailbox then context.on_select_mailbox() end
    end
 
    local function close_or_back()
@@ -37,6 +51,7 @@ function M.create(context, email_commands)
       local current_buffer = context.current_buffer()
 
       if state.sidebar_popup and current_buffer == state.sidebar_popup.bufnr then
+         if context.on_select_mailbox then context.on_select_mailbox({ immediate = true, retry = true }) end
          context.focus(state.listing_popup)
       elseif state.listing_popup and current_buffer == state.listing_popup.bufnr then
          email_commands.show_email()
@@ -47,6 +62,7 @@ function M.create(context, email_commands)
       close = close,
       close_or_back = close_or_back,
       enter = enter,
+      focus_sidebar = focus_sidebar,
    }
 end
 

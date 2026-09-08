@@ -18,6 +18,10 @@ function M.open()
       return nil
    end
 
+   state.current_folder, state.current_page = nil, 1
+   layout.set_mailboxes({})
+   layout.set_envelopes({})
+
    local finish = layout.start_activity({ "Loading sidebar", "Loading emails" })
    local function on_error(message)
       if finish() then vim.notify("Zenvoy: " .. message, vim.log.levels.ERROR) end
@@ -25,7 +29,22 @@ function M.open()
 
    local options = config.get().himalaya
    local process = Process.new({ timeout = options.timeout })
-   local loader = LoadMail.new(Client.new(process, options))
+   local client = Client.new(process, options)
+   local loader = LoadMail.new(client)
+   layout.set_message_reader(function(id, callback, mailbox)
+      return client:read_message(id, mailbox, callback, { seen = true })
+   end)
+   layout.set_mailbox_loader(function(mailbox, callback)
+      return client:list_envelopes(callback, mailbox)
+   end)
+   layout.set_composer({
+      prepare_reply = function(id, mailbox, all, callback)
+         return client:prepare_reply(id, mailbox, all, callback)
+      end,
+      send = function(draft, callback)
+         return client:send_message(draft, callback)
+      end,
+   })
    local ok, request = pcall(loader.run, loader, {
       on_success = function(response)
          if not finish() then return end

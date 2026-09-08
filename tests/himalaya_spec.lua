@@ -53,6 +53,15 @@ t.test("supports a custom executable and page size without sharing options", fun
    t.equal("50", other.command[5])
 end)
 
+t.test("lists an explicit native mailbox without changing the default listing", function()
+   local client, result, callback = fixture('{"envelopes":[]}')
+   client:list_envelopes(callback, "[Gmail]/Sent Mail")
+   t.equal({ "himalaya", "envelope", "list", "-s", "50", "--mailbox", "[Gmail]/Sent Mail",
+      "--json", "--log-level", "off" }, result.command)
+   client:list_envelopes(callback)
+   t.equal({ "himalaya", "envelope", "list", "-s", "50", "--json", "--log-level", "off" }, result.command)
+end)
+
 t.test("accepts empty lists and nullable optional collections", function()
    local client, result, callback = fixture('{"mailboxes":[]}')
    client:list_mailboxes(callback)

@@ -115,6 +115,10 @@ test("uses enter to open an email and q to go back before closing", function()
    local ui, state = reload_ui()
    local windows_before = #vim.api.nvim_list_wins()
 
+   ui.set_envelopes({ { id = "1", subject = "Selected email" } })
+   ui.set_message_reader(function(_, callback)
+      callback(nil, { subject = "Selected email", from = {}, to = {}, cc = {}, body = "Hello!" })
+   end)
    ui.create()
 
    find_mapping(state.listing_popup.bufnr, "<CR>").callback()

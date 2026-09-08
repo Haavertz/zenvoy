@@ -26,7 +26,7 @@ local function find_mapping(bufnr, lhs)
    end
 end
 
-test("keeps the existing Zenvoy keymap defaults", function()
+test("provides navigation, composition and reply defaults", function()
    package.loaded["zenvoy.config"] = nil
    local config = require("zenvoy.config")
    local options = config.get()
@@ -34,8 +34,10 @@ test("keeps the existing Zenvoy keymap defaults", function()
    assert_equal(false, options.wrap_folder_navigation, "wrap_folder_navigation")
    assert_equal(false, options.icons_enable, "icons_enable")
    assert_equal("close_or_back", options.keymaps["q"], "q mapping")
-   assert_equal(false, options.keymaps["c"], "c mapping")
-   assert_equal(false, options.keymaps["r"], "r mapping")
+   assert_equal("compose", options.keymaps["c"], "c mapping")
+   assert_equal("reply", options.keymaps["r"], "r mapping")
+   assert_equal("reply_all", options.keymaps["R"], "R mapping")
+   assert_equal("focus_sidebar", options.keymaps["s"], "s mapping")
    assert_equal("enter", options.keymaps["<CR>"], "enter mapping")
 end)
 

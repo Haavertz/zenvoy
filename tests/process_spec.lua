@@ -3,7 +3,7 @@ vim.opt.runtimepath:prepend(vim.fn.getcwd())
 local t = dofile("tests/helpers.lua")
 local Process = require("zenvoy.core.process")
 
-local function fixture(options)
+local function fixture(options, run_options)
    local captured = { scheduled = {}, kills = {}, calls = {} }
    options = options or {}
    options.system = options.system or function(command, opts, on_exit)
@@ -14,7 +14,7 @@ local function fixture(options)
    local process = Process.new(options)
    local request = process:run({ "himalaya", "mailbox", "list", "--json" }, function(err, output)
       captured.calls[#captured.calls + 1] = { err = err, output = output }
-   end)
+   end, run_options)
    function captured.flush()
       for _, callback in ipairs(captured.scheduled) do callback() end
       captured.scheduled = {}
@@ -36,6 +36,14 @@ t.test("uses each instance's timeout", function()
    local first, second = fixture({ timeout = 10 }), fixture({ timeout = 20 })
    t.equal(10, first.options.timeout)
    t.equal(20, second.options.timeout)
+end)
+
+t.test("passes literal multiline stdin without changing execution defaults", function()
+   local body = "Olá, Bob!\n$(not a shell command)\n`literal`\n"
+   local result = fixture(nil, { stdin = body })
+   t.equal({ text = true, timeout = 30000, stdin = body }, result.options)
+   result = fixture(nil, { stdin = "" })
+   t.equal("", result.options.stdin)
 end)
 
 t.test("reports stderr, stdout fallback, and exit status", function()

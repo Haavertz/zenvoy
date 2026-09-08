@@ -1,0 +1,462 @@
+{
+  "html_body": [
+    4
+  ],
+  "text_body": [
+    2
+  ],
+  "attachments": [
+    5,
+    6
+  ],
+  "parts": [
+    {
+      "headers": [
+        {
+          "name": "from",
+          "value": {
+            "Address": {
+              "List": [
+                {
+                  "name": "Alice",
+                  "address": "alice@example.test"
+                }
+              ]
+            }
+          },
+          "offset_field": 0,
+          "offset_start": 5,
+          "offset_end": 33
+        },
+        {
+          "name": "to",
+          "value": {
+            "Address": {
+              "List": [
+                {
+                  "name": "Bob",
+                  "address": "bob@example.test"
+                }
+              ]
+            }
+          },
+          "offset_field": 33,
+          "offset_start": 36,
+          "offset_end": 60
+        },
+        {
+          "name": "subject",
+          "value": {
+            "Text": "Nested MIME with encoded content"
+          },
+          "offset_field": 60,
+          "offset_start": 68,
+          "offset_end": 102
+        },
+        {
+          "name": {
+            "other": "Delivered-To"
+          },
+          "value": {
+            "Text": "bob@example.test"
+          },
+          "offset_field": 102,
+          "offset_start": 115,
+          "offset_end": 133
+        },
+        {
+          "name": {
+            "other": "X-Transport-Header"
+          },
+          "value": {
+            "Text": "synthetic only"
+          },
+          "offset_field": 133,
+          "offset_start": 152,
+          "offset_end": 168
+        },
+        {
+          "name": "mime_version",
+          "value": {
+            "Text": "1.0"
+          },
+          "offset_field": 168,
+          "offset_start": 181,
+          "offset_end": 186
+        },
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "multipart",
+              "c_subtype": "mixed",
+              "attributes": [
+                {
+                  "name": "boundary",
+                  "value": "===============0181105988426235252=="
+                }
+              ]
+            }
+          },
+          "offset_field": 186,
+          "offset_start": 199,
+          "offset_end": 265
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Multipart": [
+          1,
+          6
+        ]
+      },
+      "offset_header": 0,
+      "offset_body": 266,
+      "offset_end": 1522
+    },
+    {
+      "headers": [
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "multipart",
+              "c_subtype": "alternative",
+              "attributes": [
+                {
+                  "name": "boundary",
+                  "value": "===============7488874404391574738=="
+                }
+              ]
+            }
+          },
+          "offset_field": 305,
+          "offset_start": 318,
+          "offset_end": 391
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Multipart": [
+          2,
+          3
+        ]
+      },
+      "offset_header": 305,
+      "offset_body": 392,
+      "offset_end": 1224
+    },
+    {
+      "headers": [
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "text",
+              "c_subtype": "plain",
+              "attributes": [
+                {
+                  "name": "charset",
+                  "value": "utf-8"
+                }
+              ]
+            }
+          },
+          "offset_field": 431,
+          "offset_start": 444,
+          "offset_end": 473
+        },
+        {
+          "name": "content_transfer_encoding",
+          "value": {
+            "Text": "base64"
+          },
+          "offset_field": 473,
+          "offset_start": 499,
+          "offset_end": 507
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Text": "Olá, Bob!\nDecoded base64 body.\n"
+      },
+      "offset_header": 431,
+      "offset_body": 508,
+      "offset_end": 553
+    },
+    {
+      "headers": [
+        {
+          "name": "mime_version",
+          "value": {
+            "Text": "1.0"
+          },
+          "offset_field": 593,
+          "offset_start": 606,
+          "offset_end": 611
+        },
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "multipart",
+              "c_subtype": "related",
+              "attributes": [
+                {
+                  "name": "boundary",
+                  "value": "===============7430798658012158470=="
+                }
+              ]
+            }
+          },
+          "offset_field": 611,
+          "offset_start": 624,
+          "offset_end": 693
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Multipart": [
+          4,
+          5
+        ]
+      },
+      "offset_header": 593,
+      "offset_body": 694,
+      "offset_end": 1182
+    },
+    {
+      "headers": [
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "text",
+              "c_subtype": "html",
+              "attributes": [
+                {
+                  "name": "charset",
+                  "value": "utf-8"
+                }
+              ]
+            }
+          },
+          "offset_field": 733,
+          "offset_start": 746,
+          "offset_end": 774
+        },
+        {
+          "name": "content_transfer_encoding",
+          "value": {
+            "Text": "quoted-printable"
+          },
+          "offset_field": 774,
+          "offset_start": 800,
+          "offset_end": 818
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Html": "<html><body><h1>Olá, Bob!</h1><p>HTML alternative</p><img src=\"cid:logo\" alt=\"Test logo\"></body></html>\n"
+      },
+      "offset_header": 733,
+      "offset_body": 819,
+      "offset_end": 934
+    },
+    {
+      "headers": [
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "image",
+              "c_subtype": "png",
+              "attributes": null
+            }
+          },
+          "offset_field": 974,
+          "offset_start": 987,
+          "offset_end": 998
+        },
+        {
+          "name": "content_transfer_encoding",
+          "value": {
+            "Text": "base64"
+          },
+          "offset_field": 998,
+          "offset_start": 1024,
+          "offset_end": 1032
+        },
+        {
+          "name": "content_disposition",
+          "value": {
+            "ContentType": {
+              "c_type": "inline",
+              "c_subtype": null,
+              "attributes": [
+                {
+                  "name": "filename",
+                  "value": "logo.png"
+                }
+              ]
+            }
+          },
+          "offset_field": 1032,
+          "offset_start": 1052,
+          "offset_end": 1081
+        },
+        {
+          "name": "content_id",
+          "value": {
+            "Text": "logo"
+          },
+          "offset_field": 1081,
+          "offset_start": 1092,
+          "offset_end": 1100
+        },
+        {
+          "name": "mime_version",
+          "value": {
+            "Text": "1.0"
+          },
+          "offset_field": 1100,
+          "offset_start": 1113,
+          "offset_end": 1118
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Binary": [
+          110,
+          111,
+          116,
+          32,
+          97,
+          32,
+          114,
+          101,
+          97,
+          108,
+          32,
+          112,
+          110,
+          103
+        ]
+      },
+      "offset_header": 974,
+      "offset_body": 1119,
+      "offset_end": 1140
+    },
+    {
+      "headers": [
+        {
+          "name": "content_type",
+          "value": {
+            "ContentType": {
+              "c_type": "application",
+              "c_subtype": "octet-stream",
+              "attributes": null
+            }
+          },
+          "offset_field": 1264,
+          "offset_start": 1277,
+          "offset_end": 1303
+        },
+        {
+          "name": "content_transfer_encoding",
+          "value": {
+            "Text": "base64"
+          },
+          "offset_field": 1303,
+          "offset_start": 1329,
+          "offset_end": 1337
+        },
+        {
+          "name": "content_disposition",
+          "value": {
+            "ContentType": {
+              "c_type": "attachment",
+              "c_subtype": null,
+              "attributes": [
+                {
+                  "name": "filename",
+                  "value": "sample.bin"
+                }
+              ]
+            }
+          },
+          "offset_field": 1337,
+          "offset_start": 1357,
+          "offset_end": 1392
+        },
+        {
+          "name": "mime_version",
+          "value": {
+            "Text": "1.0"
+          },
+          "offset_field": 1392,
+          "offset_start": 1405,
+          "offset_end": 1410
+        }
+      ],
+      "is_encoding_problem": false,
+      "body": {
+        "Binary": [
+          97,
+          116,
+          116,
+          97,
+          99,
+          104,
+          109,
+          101,
+          110,
+          116,
+          32,
+          99,
+          111,
+          110,
+          116,
+          101,
+          110,
+          116,
+          32,
+          115,
+          104,
+          111,
+          117,
+          108,
+          100,
+          32,
+          110,
+          111,
+          116,
+          32,
+          114,
+          101,
+          112,
+          108,
+          97,
+          99,
+          101,
+          32,
+          109,
+          101,
+          115,
+          115,
+          97,
+          103,
+          101,
+          32,
+          98,
+          111,
+          100,
+          121
+        ]
+      },
+      "offset_header": 1264,
+      "offset_body": 1411,
+      "offset_end": 1480
+    }
+  ]
+}

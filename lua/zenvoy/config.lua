@@ -11,8 +11,10 @@ local defaults = {
    icons_enable = false,
    keymaps = {
       ["q"] = "close_or_back",
-      ["c"] = false,
-      ["r"] = false,
+      ["c"] = "compose",
+      ["r"] = "reply",
+      ["R"] = "reply_all",
+      ["s"] = "focus_sidebar",
       ["<CR>"] = "enter",
    },
 }

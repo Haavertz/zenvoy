@@ -4,8 +4,9 @@ local Popup = require("nui.popup")
 local Text = require("nui.text")
 
 ---@param title string
+---@param win_options? table
 ---@return table Popup
-function M.create_popup(title)
+function M.create_popup(title, win_options)
   return Popup({
     enter = false,
     focusable = true,
@@ -17,9 +18,9 @@ function M.create_popup(title)
         top_align = "center",
       },
     },
-    win_options = {
+    win_options = vim.tbl_extend("force", {
       cursorline = true,
-    },
+    }, win_options or {}),
     buf_options = {
       modifiable = false,
       readonly = true,
