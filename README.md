@@ -1,21 +1,25 @@
-<div align="center">
-  <h1>📫 Zenvoy</h1>
-  <p>This Zenvoy is TUI for email.</p>
-  <![]('./specs/')
-</div>
+<h1 align="center">📫 Zenvoy</h1>
 
-### About 
+<p align="center">
+  This Zenvoy is TUI for email.
+</p>
+
+<p align="center">
+  <img src="./assets/zenvoy.png" alt="Zenvoy">
+</p>
+
+## About
 
 A minimal email TUI for people who live in Neovim. Zenvoy is written entirely in
 Lua and calls the Himalaya CLI asynchronously.
 
-### Requirements
+## Requirements
 
 - [Neovim](https://neovim.io/doc/install/) >= v0.10.0
 - [Himalaya](https://github.com/pimalaya/himalaya) >= v2.1.0, with a default account configured
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim)
 
-### Install 
+## Install
 
 Install the plugin with your preferred plugin manager. For example, with [lazy.nvim](https://github.com/folke/lazy.nvim):
 
@@ -33,13 +37,14 @@ or Nvim >= 0.12.0
 
 ```lua
 vim.pack.add({
-  { src = 'https://github.com/MunifTanjim/nui.nvim' },
-  { src = 'https://github.com/Haavertz/zenvoy' },
+    { src = "https://github.com/MunifTanjim/nui.nvim" },
+    { src = "https://github.com/Haavertz/zenvoy" },
 })
+
 require("zenvoy").setup()
 ```
 
-### Usage
+## Usage
 
 Open the interface with `:Zenvoy`. Himalaya's configured default account and inbox
 are used when it starts.
@@ -80,13 +85,14 @@ Default main-view shortcuts can be changed or disabled:
 
 ```lua
 require("zenvoy").setup({
-  himalaya = { page_size = 50 },
-  keymaps = {
-    ["s"] = false,
-    ["gs"] = "focus_sidebar",
-    ["c"] = "compose",
-    ["r"] = "reply",
-    ["R"] = "reply_all",
-  },
+    himalaya = { page_size = 50 },
+    keymaps = {
+        ["s"] = false,
+        ["gs"] = "focus_sidebar",
+        ["c"] = "compose",
+        ["r"] = "reply",
+        ["R"] = "reply_all",
+    },
 })
 ```
+
