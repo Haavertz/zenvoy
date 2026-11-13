@@ -21,6 +21,7 @@ local groups = {
    ZenvoyError = { link = "DiagnosticError" },
    ZenvoyButton = { link = "NormalFloat" },
    ZenvoyButtonActive = { link = "PmenuSel" },
+   ZenvoyKey = { link = "Special" },
 }
 
 local augroup

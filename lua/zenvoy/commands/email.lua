@@ -16,6 +16,7 @@ local M = {}
 ---@field on_select_mailbox? fun(options?: table) Load the selected sidebar row.
 ---@field on_show_image? fun() Render the image under the message cursor.
 ---@field on_reader? fun(action: string) Act on the item under the message cursor.
+---@field on_help? fun() Show the keybindings.
 
 ---@param context ZenvoyCommandContext
 ---@return table
@@ -38,7 +39,8 @@ function M.create(context)
       if not selected then return end
 
       if not state.email_visible then
-         state.email_visible = true
+         -- Every email opens below the list; z shows it over the whole window.
+         state.email_visible, state.email_fullscreen = true, false
          update_layout()
       end
 
@@ -57,6 +59,14 @@ function M.create(context)
       context.focus(state.listing_popup)
    end
 
+   -- Show the opened email over the whole window, or below the list again.
+   local function toggle_fullscreen()
+      if not state.layout or not state.email_visible then return end
+      state.email_fullscreen = not state.email_fullscreen
+      update_layout()
+      context.focus(state.email_popup)
+   end
+
    local function prepare(options)
       local selected = context.selected_envelope()
       if not selected or not context.on_compose then return end
@@ -72,6 +82,7 @@ function M.create(context)
    return {
       show_email = show_email,
       hide_email = hide_email,
+      toggle_fullscreen = toggle_fullscreen,
       compose = function()
          if context.on_compose then context.on_compose({}) end
       end,

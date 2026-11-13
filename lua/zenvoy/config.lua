@@ -12,7 +12,7 @@ local defaults = {
       prefer = "html",
       -- Maximum text width for formatted HTML; 0 uses the whole message pane.
       max_width = 100,
-      -- Collapse long quoted replies; open them with zo.
+      -- Collapse long quoted replies; Enter opens them.
       fold_quotes = true,
    },
    attachments = {
@@ -34,6 +34,8 @@ local defaults = {
       ["T"] = "toggle_view",
       ["<Tab>"] = "next_item",
       ["<S-Tab>"] = "previous_item",
+      ["z"] = "toggle_fullscreen",
+      ["?"] = "help",
       ["<CR>"] = "enter",
    },
 }

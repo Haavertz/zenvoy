@@ -57,20 +57,21 @@ are used when it starts.
 | `s` | Focus the mailbox sidebar |
 | `j` / `k` in the sidebar | Select a mailbox and load its emails |
 | `Enter` in the sidebar | Focus the email list; retry a failed mailbox load |
-| `Enter` on an email | Read it and mark it as seen |
+| `Enter` on an email | Read it below the list and mark it as seen |
 | `q` | Return from the message pane, then close Zenvoy |
+| `?` | Show all keybindings |
 
 In the message pane:
 
 | Key | Action |
 | --- | --- |
+| `z` | Show the email over the whole Zenvoy window, or below the list again |
 | `Tab` / `Shift-Tab` | Jump to the next / previous link, image or attachment |
-| `Enter` | Act on the item under the cursor: link, image or attachment menu |
+| `Enter` | Act on the item under the cursor: link, image or attachment menu; expand or collapse quoted text |
 | `gx` | Open the link under the cursor |
 | `S` | Save the attachment under the cursor (or choose one) |
 | `I` | Render the image under the cursor |
 | `T` | Switch between the formatted (HTML) and plain-text versions |
-| `zo` / `zc` | Expand / collapse quoted text |
 
 Confirmations and short menus open a small dialog in the middle of the screen.
 `h` / `l`, the arrow keys or `Tab` move between its buttons, `Enter` chooses, and
@@ -79,12 +80,21 @@ editing**, has the focus first, so `Enter` alone never sends or discards.
 
 ### Reading
 
+An email opens below the list. Press `z` to show it over the whole Zenvoy
+window, where the bottom border shows **Loading email** while it loads, and `z`
+again to bring back the folders and the list. The next email opens below the
+list again, and `q` returns to the list on the email that was open. In the
+message pane `z` acts at once, so Vim's `z` commands (`zo`, `zz`) are not
+available there.
+
 Messages open with a header block (From, To, Cc, Reply-To when it differs,
 Date and Subject) followed by the body. HTML email is laid out like webmail, as
 plain text in the buffer: headings, bold and italic text, lists, quotes with a
 bar, aligned data tables and underlined links. Layout tables are flattened,
-and hidden preheaders, styles, scripts and tracking pixels are left out. Long
-quoted replies are folded; press `zo` to read them.
+and hidden preheaders, styles, scripts and tracking pixels are left out. A rule
+across the pane separates the header from the body, and the body from the
+attachments. Long quoted replies are folded; press `Enter` on one to read it,
+and `Enter` on quoted text to fold it again.
 
 Links are opened only on request. The bottom border shows the destination of
 the link under the cursor, `Enter` shows it again with **Open link** and
@@ -201,9 +211,10 @@ require("zenvoy").setup({
 })
 ```
 
-Message-pane actions can be remapped the same way: `open_link`,
-`save_attachment`, `show_image`, `toggle_view`, `next_item` and
-`previous_item`. The default highlight groups (`ZenvoyLink`, `ZenvoyQuote`,
+Message-pane actions can be remapped the same way: `toggle_fullscreen` (`z`),
+`open_link`, `save_attachment`, `show_image`, `toggle_view`, `next_item` and
+`previous_item`; `help` (`?`) works in every pane. The `?` window lists the keys
+as configured. The default highlight groups (`ZenvoyLink`, `ZenvoyQuote`,
 `ZenvoyHeading`, `ZenvoyAttachment`, `ZenvoyLabel`, `ZenvoyMuted`,
-`ZenvoyButton`, `ZenvoyButtonActive` and others) link to standard groups and can
-be overridden.
+`ZenvoyButton`, `ZenvoyButtonActive`, `ZenvoyKey` and others) link to standard
+groups and can be overridden.

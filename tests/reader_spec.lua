@@ -253,5 +253,32 @@ t.test("I renders the inline image marker under the cursor, T switches views, an
    assert(plain:find("[Image 1: logo.png]  Press I to render", 1, true), plain)
 end)
 
+t.test("Enter expands a folded quote and folds it again from its text", function()
+   open_message()
+   local winid = state.email_popup.winid
+   local function closed(row)
+      return vim.api.nvim_win_call(winid, function() return vim.fn.foldclosed(row) end)
+   end
+   local start
+   for row = 1, vim.api.nvim_buf_line_count(state.email_popup.bufnr) do
+      if closed(row) == row then start = row break end
+   end
+   assert(start, "the quote should start folded")
+   local label = vim.api.nvim_win_call(winid, function() return vim.fn.foldtextresult(start) end)
+   assert(label:find("(Enter to expand)", 1, true), label)
+   vim.api.nvim_win_set_cursor(winid, { start, 0 })
+   press("<CR>")
+   t.equal(nil, t.dialog())
+   t.equal(-1, closed(start))
+   vim.api.nvim_win_set_cursor(winid, { start + 2, 0 })
+   press("<CR>")
+   t.equal(start, closed(start + 2))
+   -- Outside quotes, Enter without a link or file does nothing.
+   vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+   press("<CR>")
+   t.equal(nil, t.dialog())
+   t.equal(start, closed(start))
+end)
+
 app.close()
 t.finish("reader_spec")

@@ -16,6 +16,8 @@ function M.create(context)
       show_image = session_commands.show_image,
       show_email = email_commands.show_email,
       hide_email = email_commands.hide_email,
+      toggle_fullscreen = email_commands.toggle_fullscreen,
+      help = session_commands.help,
       compose = email_commands.compose,
       reply = email_commands.reply,
       reply_all = email_commands.reply_all,

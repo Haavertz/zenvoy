@@ -36,10 +36,17 @@ local function content()
    return table.concat(vim.api.nvim_buf_get_lines(state.email_popup.bufnr, 0, -1, false), "\n")
 end
 
-local function sidebar_footer()
-   local border = state.sidebar_popup.border
-   local row = vim.api.nvim_win_get_height(border.winid) - 1
-   return vim.api.nvim_buf_get_lines(border.bufnr, row, row + 1, false)[1]
+-- The bottom border that shows activity: the email's while it covers the window,
+-- otherwise the folders'.
+local function footer()
+   local popup = state.sidebar_popup.winid and state.sidebar_popup or state.email_popup
+   local lines = vim.api.nvim_buf_get_lines(popup.border.bufnr, 0, -1, false)
+   return lines[#lines]
+end
+
+local function rect(winid)
+   local row, col = unpack(vim.api.nvim_win_get_position(winid))
+   return { row, col, vim.api.nvim_win_get_width(winid), vim.api.nvim_win_get_height(winid) }
 end
 
 local function open(empty)
@@ -61,6 +68,11 @@ local function select(row)
    flush() -- Let NUI finish its scheduled layout positioning between user actions.
 end
 
+local function press(lhs)
+   mapping(state.email_popup, lhs)()
+   flush()
+end
+
 local function fixture(name)
    return table.concat(vim.fn.readfile("tests/fixtures/messages/" .. name .. ".json"), "\n")
 end
@@ -72,14 +84,16 @@ t.test("Enter reads the selected row and displays subject, addresses and body", 
    t.equal("second/native-id", jobs[3].command[#jobs[3].command])
    t.equal(true, state.email_visible)
    t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
-   assert(sidebar_footer():find("Loading email", 1, true), sidebar_footer())
+   -- The email opens below the list, and the folders' border shows the activity.
+   assert(rect(state.email_popup.winid)[1] > rect(state.listing_popup.winid)[1], "the email goes below the list")
+   assert(footer():find("Loading email", 1, true), footer())
    assert(not content():find("Loading email", 1, true), content())
    assert(not content():find("No message content", 1, true), "pending messages must not appear empty")
    assert(content():find("Subject:  Second email", 1, true), content())
    local value = vim.json.decode(fixture("multipart"))
    value.parts[3].body.Html = "<p>Olá, <b>Bob</b>!</p><p>Formatted <a href='https://example.com/x'>version</a></p>"
    complete(jobs[3], vim.json.encode(value))
-   assert(not sidebar_footer():find("Loading", 1, true), sidebar_footer())
+   assert(not footer():find("Loading", 1, true), footer())
    local lines = content()
    for _, text in ipairs({ "Subject:  Olá", "From:     Alice <alice@example.com>",
       "To:       Bob <bob@example.com>, Carol <carol@example.com>",
@@ -158,7 +172,8 @@ t.test("q cancels the read, returns to the list and allows another email to open
    t.equal(1, old.kills)
    t.equal(false, state.email_visible)
    t.equal(state.listing_popup.winid, vim.api.nvim_get_current_win())
-   assert(not sidebar_footer():find("Loading", 1, true), sidebar_footer())
+   t.equal(1, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
+   assert(not footer():find("Loading", 1, true), footer())
    complete(old, fixture("plain"))
    t.equal(false, state.email_visible)
    select(2)
@@ -166,13 +181,26 @@ t.test("q cancels the read, returns to the list and allows another email to open
    assert(content():find("No message content", 1, true), content())
 end)
 
-t.test("API and external sidebar close cancel reads and prevent updates after reopening", function()
-   for _, close in ipairs({ app.close, function() vim.api.nvim_win_close(state.sidebar_popup.winid, true) end }) do
+t.test("API and external closes cancel reads and prevent updates after reopening", function()
+   local closes = {
+      app.close,
+      function() vim.api.nvim_win_close(state.sidebar_popup.winid, true) end,
+      -- Over the whole window the email is the only pane: closing it closes Zenvoy.
+      function()
+         press("z")
+         vim.api.nvim_win_close(state.email_popup.winid, true)
+      end,
+   }
+   for _, close in ipairs(closes) do
+      app.close()
+      local windows = #vim.api.nvim_list_wins()
       open()
       select(1)
       local old = jobs[3]
       close()
       flush()
+      t.equal(false, state.is_open)
+      t.equal(windows, #vim.api.nvim_list_wins())
       t.equal(1, old.kills)
       open()
       select(2)
@@ -189,7 +217,7 @@ t.test("process errors, invalid JSON and timeouts appear in the pane and allow r
       complete(jobs[3], failure[1], failure[2])
       assert(content():find("Unable to load email", 1, true), content())
       assert(not content():find("Loading email", 1, true), content())
-      assert(not sidebar_footer():find("Loading", 1, true), sidebar_footer())
+      assert(not footer():find("Loading", 1, true), footer())
       t.equal(1, #notifications)
       select(1)
       complete(jobs[4], fixture("plain"))
@@ -238,6 +266,99 @@ t.test("header line breaks are flattened and body line breaks are preserved", fu
    assert(content():find("Subject:  A subject with a newline", 1, true), content())
    assert(content():find("From:     Alice Smith <alice@example.com>", 1, true), content())
    assert(content():find("First line\n\nSecond line", 1, true), content())
+end)
+
+-- The separator below the header: a line made of rule characters only.
+local function rule()
+   for _, line in ipairs(vim.api.nvim_buf_get_lines(state.email_popup.bufnr, 0, -1, false)) do
+      if line ~= "" and line:gsub("─", "") == "" then return line end
+   end
+end
+
+local function text_width()
+   local width = 0
+   for _, line in ipairs(vim.api.nvim_buf_get_lines(state.email_popup.bufnr, 0, -1, false)) do
+      if line:find("A long paragraph", 1, true) then width = math.max(width, vim.api.nvim_strwidth(line)) end
+   end
+   return width
+end
+
+-- Words wrap whole, so the longest line is at most one word short of the width.
+local function fills(width, text)
+   assert(text <= width and text > width - #"paragraph ", text .. " fills " .. width)
+end
+
+local function long_email()
+   local value = vim.json.decode(fixture("multipart"))
+   value.parts[3].body.Html = "<p>" .. string.rep("A long paragraph of formatted text. ", 60) .. "</p>"
+   return vim.json.encode(value)
+end
+
+t.test("the separators span the whole pane while the text keeps reader.max_width", function()
+   open()
+   select(1)
+   complete(jobs[3], long_email())
+   local pane = vim.api.nvim_win_get_width(state.email_popup.winid)
+   assert(pane > 100, "the test needs a pane wider than reader.max_width")
+   t.equal(pane, vim.api.nvim_strwidth(rule()))
+   fills(100, text_width())
+   press("z")
+   pane = vim.api.nvim_win_get_width(state.email_popup.winid)
+   t.equal(pane, vim.api.nvim_strwidth(rule()))
+   fills(100, text_width())
+end)
+
+t.test("z shows the email over the whole window and back; the next email opens below the list", function()
+   open()
+   app.close()
+   app.setup({ reader = { max_width = 0 } }) -- Lay the text out across the whole pane.
+   vim.cmd.Zenvoy()
+   complete(jobs[#jobs - 1], '{"mailboxes":[{"id":"Inbox"}]}')
+   complete(jobs[#jobs], '{"envelopes":[{"id":"first"},{"id":"second"}]}')
+   select(1)
+   assert(footer():find("Loading email", 1, true), footer())
+   press("z")
+   -- The email covers the whole Zenvoy window, and its own border shows the activity.
+   t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
+   t.equal(nil, state.sidebar_popup.winid)
+   t.equal(nil, state.listing_popup.winid)
+   t.equal(rect(state.layout.winid), rect(state.email_popup.border.winid))
+   assert(footer():find("Loading email", 1, true), footer())
+   complete(jobs[#jobs], long_email())
+   assert(not footer():find("Loading", 1, true), footer())
+   local full = text_width()
+   fills(vim.api.nvim_win_get_width(state.email_popup.winid) - 1, full)
+   local count = vim.api.nvim_buf_line_count(state.email_popup.bufnr)
+   vim.api.nvim_win_set_cursor(state.email_popup.winid, { count, 0 })
+
+   press("z")
+   t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
+   assert(state.sidebar_popup.winid and state.listing_popup.winid, "z again shows the folders and the list")
+   assert(rect(state.email_popup.winid)[1] > rect(state.listing_popup.winid)[1], "the email goes below the list")
+   -- Laid out again for the narrower pane, near the same place in the text.
+   local split = text_width()
+   fills(vim.api.nvim_win_get_width(state.email_popup.winid) - 1, split)
+   assert(split < full, split .. " < " .. full)
+   count = vim.api.nvim_buf_line_count(state.email_popup.bufnr)
+   assert(vim.api.nvim_win_get_cursor(state.email_popup.winid)[1] > count / 2, "the reading position is kept")
+
+   -- Over the whole window, q returns to the list; the next email opens below it.
+   press("z")
+   press("q")
+   t.equal(state.listing_popup.winid, vim.api.nvim_get_current_win())
+   t.equal(1, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
+   select(2)
+   assert(state.listing_popup.winid, "the next email opens below the list")
+   t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
+end)
+
+t.test("s from an email over the whole window returns to the list with the folders focused", function()
+   open()
+   select(2)
+   press("z")
+   press("s")
+   t.equal(false, state.email_visible)
+   t.equal(state.sidebar_popup.winid, vim.api.nvim_get_current_win())
 end)
 
 app.close()

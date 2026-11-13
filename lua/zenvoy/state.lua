@@ -11,6 +11,8 @@ M.envelopes = {}
 M.current_envelope_count = 0
 M.is_open = false
 M.email_visible = false
+-- An opened email is shown below the list; `z` shows it over the whole window.
+M.email_fullscreen = false
 M.layout = nil
 M.sidebar_popup = nil
 M.listing_popup = nil

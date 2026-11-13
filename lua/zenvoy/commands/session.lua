@@ -34,6 +34,8 @@ function M.create(context, email_commands)
    end
 
    local function focus_sidebar()
+      -- An email over the whole window hides the folders: return to the list first.
+      if state.email_visible and state.email_fullscreen then email_commands.hide_email() end
       context.focus(state.sidebar_popup)
       if context.on_select_mailbox then context.on_select_mailbox() end
    end
@@ -67,6 +69,9 @@ function M.create(context, email_commands)
       focus_sidebar = focus_sidebar,
       show_image = function()
          if context.on_show_image then context.on_show_image() end
+      end,
+      help = function()
+         if context.on_help then context.on_help() end
       end,
    }
 end

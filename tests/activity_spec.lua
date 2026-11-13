@@ -80,4 +80,36 @@ assert(not footer(next_sidebar):find(" ", 1, true), "clear must remove a visible
 next_finish()
 next_sidebar:unmount()
 
-print("activity_spec: bottom title, animation, centering, cycling, resize and cleanup passed")
+-- An email over the whole window hides the folders: the indicator moves to the email's
+-- border, keeps the running work and gives the border back to the email when idle.
+local function titled(title)
+   local popup = Popup({
+      relative = "editor", position = "50%", size = { width = 40, height = 10 },
+      border = { style = "single", text = { top = title } },
+   })
+   popup:mount()
+   return popup
+end
+local folders, email = titled(" Folders "), titled(" Email ")
+local moving = Activity.new()
+moving:attach(folders)
+local loading = moving:start("Loading email")
+assert(footer(folders):find("Loading email", 1, true), footer(folders))
+moving:detach()
+assert(not footer(folders):find(" ", 1, true), "detach must clear the old border")
+assert(not moving.timer, "a detached indicator must not animate")
+folders:hide()
+local restored = 0
+moving:attach(email, function() restored = restored + 1 end)
+assert(footer(email):find("Loading email", 1, true), "hiding the old pane must keep the work")
+assert(moving:showing(email) and not moving:showing(folders))
+assert(restored == 0, "the owner keeps its border text while the indicator runs")
+assert(loading(), "work started before the move still finishes")
+assert(not footer(email):find(" ", 1, true), "idle footer must return to the email")
+assert(restored == 1, "the email redraws its own border text when idle")
+assert(not moving:showing(email))
+moving:clear()
+folders:unmount()
+email:unmount()
+
+print("activity_spec: bottom title, animation, centering, cycling, resize, cleanup and moving between panes passed")

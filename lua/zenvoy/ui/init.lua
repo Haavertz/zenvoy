@@ -17,18 +17,32 @@ local ImageController = require("zenvoy.ui.images")
 local image_preview = require("zenvoy.ui.image_preview")
 local Reader = require("zenvoy.ui.reader")
 local dialog = require("zenvoy.ui.dialog")
+local help = require("zenvoy.ui.help")
 local pending_request
 local pending_message
 local message_reader
 local mailbox_loader
 local attachment_downloader
 local composer
-local pending_layout_update
 local image_cache
 local image_controller
 local reader
--- The message shown in the email pane: { envelope, mailbox, message?, mode, view }.
+-- The message shown in the email pane:
+-- { envelope, mailbox, mode, message?, error?, view?, width? }.
 local current
+
+-- Panes on screen: "list" (folders and emails), "split" (the opened email below the
+-- list) or "full" (the email over the whole window).
+local shape
+-- Set until NUI's scheduled positioning after the last layout change has run. NUI
+-- fails if a window it positions closes first, so changes that close windows wait.
+local settling
+local deferred
+-- Windows closed during a layout change are hidden panes, not closed by the user.
+local switching = false
+local windows = {}
+local listing_cursor
+local WINDOWS_GROUP = "ZenvoyWindows"
 
 local Layout = require("nui.layout")
 
@@ -38,10 +52,20 @@ local function focus(popup)
    end
 end
 
-local function create_box()
+local function wanted_shape()
+   if not state.email_visible then return "list" end
+   return state.email_fullscreen and "full" or "split"
+end
+
+local function create_box(box_shape)
+   box_shape = box_shape or wanted_shape()
    local sidebar_width = config.get().sidebar.width
 
-   if state.email_visible then
+   if box_shape == "full" then
+      return Layout.Box({ Layout.Box(state.email_popup, { grow = 1 }) }, { dir = "row" })
+   end
+
+   if box_shape == "split" then
       return Layout.Box({
          Layout.Box(state.sidebar_popup, { size = sidebar_width }),
          Layout.Box({
@@ -57,25 +81,137 @@ local function create_box()
    }, { dir = "row" })
 end
 
+local function email_cursor()
+   local popup = state.email_popup
+   if not state.email_visible or not popup or not popup.winid or not vim.api.nvim_win_is_valid(popup.winid) then
+      return nil
+   end
+   return vim.api.nvim_win_get_cursor(popup.winid)
+end
+
+local function item_under_cursor()
+   local cursor = email_cursor()
+   if not cursor or not current or not current.view then return nil end
+   return message.item_at(current.view, cursor[1], cursor[2])
+end
+
+-- The message's bottom border also shows activity while the email covers the window;
+-- the activity takes precedence there.
+local function show_status(item)
+   local popup = state.email_popup
+   if popup and not activity:showing(popup) then message.status(popup, item) end
+end
+
+local function render_options(mode)
+   local options = config.get().reader
+   return { mode = mode, max_width = options.max_width, fold_quotes = options.fold_quotes }
+end
+
+---Render the current message: loaded, still loading (headers only) or failed.
+---@param keep_position? boolean Keep the cursor at about the same place in the text.
+local function render_current(keep_position)
+   local popup = state.email_popup
+   if not current or not popup then return end
+   local winid = popup.winid
+   local shown = winid ~= nil and vim.api.nvim_win_is_valid(winid)
+   local before
+   if keep_position and shown then
+      before = { row = vim.api.nvim_win_get_cursor(winid)[1], count = vim.api.nvim_buf_line_count(popup.bufnr) }
+   end
+   if current.message then
+      current.view = message.render(popup, current.message, nil, render_options(current.mode))
+   else
+      current.view = message.render(popup, current.envelope, current.error or "", render_options(current.mode))
+   end
+   current.width = shown and vim.api.nvim_win_get_width(winid) or nil
+   if before and before.row > 1 then
+      local count = vim.api.nvim_buf_line_count(popup.bufnr)
+      local row = math.floor((before.row - 1) * count / before.count + 0.5) + 1
+      vim.api.nvim_win_set_cursor(winid, { math.max(1, math.min(count, row)), 0 })
+   end
+   show_status(nil)
+end
+
+-- Text is wrapped to the pane, so a pane that changed width is rendered again.
+local function refit_message()
+   local popup = state.email_popup
+   if not current or not state.email_visible or not popup or not popup.winid then return end
+   if not vim.api.nvim_win_is_valid(popup.winid) or current.width == vim.api.nvim_win_get_width(popup.winid) then
+      return
+   end
+   -- Rendered images belong to the old lines.
+   if image_controller then image_controller:clear() end
+   render_current(true)
+end
+
+local function attach_activity()
+   if shape == "full" then
+      activity:attach(state.email_popup, function() show_status(item_under_cursor()) end)
+   elseif state.sidebar_popup then
+      activity:attach(state.sidebar_popup)
+   end
+end
+
+local function track_windows(main)
+   windows = {}
+   if main.winid then windows[main.winid] = true end
+   for _, popup in ipairs({ state.sidebar_popup, state.listing_popup, state.email_popup }) do
+      if popup and popup.winid then windows[popup.winid] = true end
+   end
+end
+
+local function settle()
+   local token = {}
+   settling = token
+   -- Queued after NUI's own callback, so this runs once the windows are positioned.
+   vim.schedule(function()
+      if settling == token then settling = nil end
+   end)
+end
+
+local function apply_layout(main, next_shape)
+   local listing = state.listing_popup
+   local listed = listing.winid ~= nil and vim.api.nvim_win_is_valid(listing.winid)
+   if listed then listing_cursor = vim.api.nvim_win_get_cursor(listing.winid) end
+   activity:detach()
+   switching = true
+   local ok, err = pcall(main.update, main, create_box(next_shape))
+   switching = false
+   shape = next_shape
+   settle()
+   track_windows(main)
+   -- The list comes back where it was, on the email that was open.
+   if not listed and listing.winid and listing_cursor then
+      local row = math.min(listing_cursor[1], vim.api.nvim_buf_line_count(listing.bufnr))
+      pcall(vim.api.nvim_win_set_cursor, listing.winid, { math.max(1, row), listing_cursor[2] })
+   end
+   attach_activity()
+   refit_message()
+   if not ok then error(err, 0) end
+end
+
 local function update_layout()
    local main = state.layout
    if not main then return end
-   if state.email_visible then
-      pending_layout_update = nil
-      main:update(create_box())
+   local next_shape = wanted_shape()
+   if next_shape == shape then return end
+   -- Only changes to "split" keep every pane that is on screen.
+   if next_shape ~= "split" and settling then
+      -- Show the new panes now, so they can take focus, and close the others once NUI
+      -- has positioned the windows of the previous change.
+      if shape ~= "split" then apply_layout(main, "split") end
+      if not deferred then
+         local request = {}
+         deferred = request
+         vim.schedule(function()
+            if deferred ~= request then return end
+            deferred = nil
+            if state.layout == main and state.is_open then update_layout() end
+         end)
+      end
       return
    end
-   -- NUI schedules positioning against the windows present during update().
-   -- Let that work drain before removing a newly opened message's border.
-   if pending_layout_update and pending_layout_update.layout == main then return end
-   local pending = { layout = main }
-   pending_layout_update = pending
-   vim.schedule(function()
-      if pending_layout_update ~= pending then return end
-      pending_layout_update = nil
-      if state.layout ~= main or not state.is_open or state.email_visible then return end
-      main:update(create_box())
-   end)
+   apply_layout(main, next_shape)
 end
 
 local function cancel_message()
@@ -84,23 +220,11 @@ local function cancel_message()
    state.open_envelope = nil
    current = nil
    if image_controller then image_controller:clear() end
-   if state.email_popup then message.status(state.email_popup, nil) end
+   show_status(nil)
    if pending then
       pending.finish()
       if pending.request then pending.request:cancel() end
    end
-end
-
-local function render_options(mode)
-   local options = config.get().reader
-   return { mode = mode, max_width = options.max_width, fold_quotes = options.fold_quotes }
-end
-
-local function render_current()
-   local popup = state.email_popup
-   if not current or not current.message or not popup then return end
-   current.view = message.render(popup, current.message, nil, render_options(current.mode))
-   message.status(popup, nil)
 end
 
 local function open_message(selected)
@@ -110,7 +234,7 @@ local function open_message(selected)
    local mailbox = state.current_folder
    local opened = { envelope = selected, mailbox = mailbox, mode = config.get().reader.prefer }
    current = opened
-   message.render(popup, selected, "", render_options(opened.mode))
+   render_current()
    local pending = { finish = activity:start("Loading email") }
    pending_message = pending
    local function receive(err, result)
@@ -118,7 +242,10 @@ local function open_message(selected)
       pending_message = nil
       if not pending.finish() or state.email_popup ~= popup or not state.email_visible then return end
       if err then
-         message.render(popup, selected, "Unable to load email.\n" .. err, render_options(opened.mode))
+         if current == opened then
+            opened.error = "Unable to load email.\n" .. err
+            render_current()
+         end
          vim.notify("Zenvoy: " .. err, vim.log.levels.ERROR)
       else
          if current == opened then
@@ -141,20 +268,6 @@ local function open_message(selected)
    end
    local ok, request = pcall(message_reader, selected.id, receive, mailbox)
    if ok then pending.request = request else receive(tostring(request)) end
-end
-
-local function email_cursor()
-   local popup = state.email_popup
-   if not state.email_visible or not popup or not popup.winid or not vim.api.nvim_win_is_valid(popup.winid) then
-      return nil
-   end
-   return vim.api.nvim_win_get_cursor(popup.winid)
-end
-
-local function item_under_cursor()
-   local cursor = email_cursor()
-   if not cursor or not current or not current.view then return nil end
-   return message.item_at(current.view, cursor[1], cursor[2])
 end
 
 local function show_image(item)
@@ -236,7 +349,19 @@ local function move_to(item)
    vim.api.nvim_win_set_cursor(popup.winid, { item.row + 1, item.col })
    -- Reveal targets inside collapsed quotations.
    vim.api.nvim_win_call(popup.winid, function() vim.cmd("silent! normal! zv") end)
-   message.status(popup, item)
+   show_status(item)
+end
+
+-- Long quoted replies are folded. Enter on a collapsed one opens it, and Enter on
+-- quoted text that is not a link or an image collapses it again.
+local function toggle_quote(collapsed_only)
+   local winid = state.email_popup.winid
+   return vim.api.nvim_win_call(winid, function()
+      local row = vim.api.nvim_win_get_cursor(winid)[1]
+      if vim.fn.foldlevel(row) == 0 or (collapsed_only and vim.fn.foldclosed(row) == -1) then return false end
+      vim.cmd("silent! normal! za")
+      return true
+   end)
 end
 
 local function reader_action(action)
@@ -247,7 +372,7 @@ local function reader_action(action)
    local context = { id = current.envelope.id, mailbox = current.mailbox }
    local item = item_under_cursor()
    if action == "activate" then
-      if not item then return end
+      if toggle_quote(item ~= nil) or not item then return end
       if item.kind == "image" then
          if item.url then
             dialog.select({ "Show image", "Open link", "Copy link", "Cancel" }, {
@@ -312,18 +437,23 @@ local mailboxes = Mailboxes.new({
 
 local function select_mailbox(options)
    local popup = state.sidebar_popup
-   if not mailbox_loader or not state.is_open or not popup or not vim.api.nvim_win_is_valid(popup.winid) then return end
+   if not mailbox_loader or not state.is_open or not popup or not popup.winid
+      or not vim.api.nvim_win_is_valid(popup.winid) then
+      return
+   end
    local selected = state.mailboxes[vim.api.nvim_win_get_cursor(popup.winid)[1]]
    if selected then mailboxes:select(selected.id, options) end
 end
 
 local function clear_session()
-   pending_layout_update = nil
+   shape, settling, deferred, windows, listing_cursor = nil, nil, nil, {}, nil
+   pcall(vim.api.nvim_del_augroup_by_name, WINDOWS_GROUP)
    cancel_message()
    mailboxes:clear()
    if composer then composer:detach(); composer = nil end
    -- After the composer is gone, so a cancelled confirmation cannot refocus it.
    dialog.close()
+   help.close()
    message_reader = nil
    mailbox_loader = nil
    activity:clear()
@@ -360,13 +490,14 @@ local commands = command_factory.create({
    on_hide_email = cancel_message,
    on_show_image = function() show_image() end,
    on_reader = reader_action,
+   on_help = function() help.open(config.get().keymaps) end,
 })
 
 -- Actions on links, images and attachments are mapped in the message pane only, so the
 -- same keys keep their usual meaning in the sidebar and the email list.
 local message_only = {
    show_image = true, open_link = true, save_attachment = true, toggle_view = true,
-   next_item = true, previous_item = true,
+   next_item = true, previous_item = true, toggle_fullscreen = true,
 }
 
 local function apply_keymaps(popup)
@@ -461,7 +592,8 @@ end
 
 function M.create()
    if state.is_open then
-      focus(state.listing_popup)
+      -- An email over the whole window hides the list.
+      focus(state.listing_popup.winid and state.listing_popup or state.email_popup)
       return state.layout
    end
 
@@ -472,7 +604,7 @@ function M.create()
       foldmethod = "manual", foldenable = true, foldlevel = 0, foldcolumn = "0",
       foldtext = "v:lua.require'zenvoy.ui.message'.foldtext()", fillchars = "fold: ,eob: ",
    })
-   state.email_visible = false
+   state.email_visible, state.email_fullscreen = false, false
 
    local main = Layout(
       {
@@ -483,19 +615,24 @@ function M.create()
             height = "80%",
          },
       },
-      create_box()
+      create_box("list")
    )
 
    highlights.setup()
    state.layout = main
    main:mount()
    state.is_open = true
-   activity:attach(state.sidebar_popup)
+   shape, deferred, listing_cursor = "list", nil, nil
+   settle()
+   track_windows(main)
+   attach_activity()
+   -- Closing any Zenvoy window from outside (`:q`, `<C-w>c`) ends the session; panes
+   -- hidden by a layout change do not.
    vim.api.nvim_create_autocmd("WinClosed", {
-      pattern = tostring(state.sidebar_popup.winid),
-      once = true,
-      callback = function()
-         if state.layout == main then M.close(true) end
+      group = vim.api.nvim_create_augroup(WINDOWS_GROUP, { clear = true }),
+      callback = function(args)
+         if switching or state.layout ~= main or not windows[tonumber(args.match)] then return end
+         M.close(true)
       end,
    })
 
@@ -514,7 +651,7 @@ function M.create()
    vim.api.nvim_create_autocmd("CursorMoved", {
       buffer = state.email_popup.bufnr,
       callback = function()
-         if state.layout == main and state.email_popup then message.status(state.email_popup, item_under_cursor()) end
+         if state.layout == main and state.email_popup then show_status(item_under_cursor()) end
       end,
    })
 

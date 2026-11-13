@@ -124,7 +124,10 @@ t.test("successful reads update seen once, preserve other flags and the listing 
    complete(jobs[3], fixture)
    t.equal(2, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
    t.equal({ "flagged", "seen" }, state.envelopes[2].flags)
+   -- The list is redrawn behind an email over the whole window; q shows the same row.
+   mapping(state.email_popup, "z")()
    mapping(state.email_popup, "q")()
+   t.equal(2, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
    mapping(state.listing_popup, "<CR>")()
    complete(jobs[4], fixture)
    t.equal({ "flagged", "seen" }, state.envelopes[2].flags)

@@ -135,6 +135,31 @@ test("uses enter to open an email and q to go back before closing", function()
    assert_equal(windows_before, #vim.api.nvim_list_wins(), "window cleanup")
 end)
 
+test("z works in the message pane only and ? opens the keybindings from every pane", function()
+   local ui, state = reload_ui()
+   ui.set_envelopes({ { id = "1", subject = "Selected email" } })
+   ui.create()
+
+   assert(find_mapping(state.email_popup.bufnr, "z"), "missing z email mapping")
+   assert_equal(nil, find_mapping(state.listing_popup.bufnr, "z"), "z keeps Vim's commands in the list")
+   assert_equal(nil, find_mapping(state.sidebar_popup.bufnr, "z"), "z keeps Vim's commands in the folders")
+   for _, popup in ipairs({ state.sidebar_popup, state.listing_popup, state.email_popup }) do
+      assert_equal(nil, find_mapping(popup.bufnr, "h"), "h moves left")
+   end
+
+   for _, popup in ipairs({ state.sidebar_popup, state.email_popup, state.listing_popup }) do
+      assert(find_mapping(popup.bufnr, "?"), "missing ? mapping")
+   end
+   find_mapping(state.listing_popup.bufnr, "?").callback()
+   assert_equal("zenvoy-help", vim.bo.filetype, "focused help")
+   ui.close()
+   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_valid(bufnr) then
+         assert(vim.bo[bufnr].filetype ~= "zenvoy-help", "closing Zenvoy closes the help")
+      end
+   end
+end)
+
 test("honors a custom mapping and disabled default", function()
    local ui, state, config = reload_ui()
 

@@ -35,6 +35,7 @@ local function create_context()
    local state = {
       is_open = true,
       email_visible = false,
+      email_fullscreen = false,
       layout = layout,
       sidebar_popup = { bufnr = 1 },
       listing_popup = { bufnr = 2 },
@@ -131,6 +132,56 @@ test("uses enter according to the focused buffer", function()
    commands.enter()
    assert_equal(true, state.email_visible, "listing opens email")
    assert_equal("email-box", layout.updates[1], "email layout after enter")
+end)
+
+test("z shows the opened email over the whole window and back; every email opens below the list", function()
+   local context, state, layout, observed = create_context()
+   context.create_box = function()
+      if not state.email_visible then return "listing-box" end
+      return state.email_fullscreen and "full-box" or "split-box"
+   end
+   local commands = load_commands(context)
+
+   commands.toggle_fullscreen()
+   assert_equal(false, state.email_fullscreen, "nothing to toggle without an email")
+   assert_equal(0, #layout.updates, "no layout change without an email")
+
+   commands.show_email()
+   assert_equal("split-box", layout.updates[1], "emails open below the list")
+   commands.toggle_fullscreen()
+   assert_equal(true, state.email_fullscreen, "full screen after z")
+   assert_equal("full-box", layout.updates[2], "full-screen layout")
+   assert_equal(state.email_popup, observed.focused_popup, "focus stays on the email")
+   commands.toggle_fullscreen()
+   assert_equal("split-box", layout.updates[3], "z again shows the list")
+   commands.toggle_fullscreen()
+   commands.hide_email()
+   commands.show_email()
+   assert_equal("split-box", layout.updates[6], "the next email opens below the list")
+end)
+
+test("s from an email over the whole window goes back to the list before focusing folders", function()
+   local context, state, _, observed = create_context()
+   local focused = {}
+   context.focus = function(popup) focused[#focused + 1] = popup; observed.focused_popup = popup end
+   local commands = load_commands(context)
+   commands.show_email()
+   commands.focus_sidebar()
+   assert_equal(true, state.email_visible, "below the list the email stays open")
+   assert_equal(state.sidebar_popup, focused[#focused], "folders focused")
+
+   commands.toggle_fullscreen()
+   commands.focus_sidebar()
+   assert_equal(false, state.email_visible, "email closed")
+   assert_equal(state.sidebar_popup, focused[#focused], "folders focused")
+end)
+
+test("? asks the UI for the keybindings", function()
+   local context = create_context()
+   local opened = 0
+   context.on_help = function() opened = opened + 1 end
+   load_commands(context).help()
+   assert_equal(1, opened, "help opened")
 end)
 
 test("dispatches composition and replies with the selected message and mailbox", function()

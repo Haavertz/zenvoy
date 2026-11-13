@@ -73,12 +73,18 @@ local function header(document, label, runs, width, options)
    if first then document:mark(first, 0, #label, { hl = "ZenvoyLabel" }) end
 end
 
-local function text_width(winid, max_width)
-   local width = 80
+-- Columns of the pane's text area.
+local function pane_width(winid)
+   local width = 81
    if winid and vim.api.nvim_win_is_valid(winid) then
       local info = vim.fn.getwininfo(winid)[1]
-      width = vim.api.nvim_win_get_width(winid) - (info and info.textoff or 0) - 1
+      width = vim.api.nvim_win_get_width(winid) - (info and info.textoff or 0)
    end
+   return math.max(21, width)
+end
+
+local function text_width(winid, max_width)
+   local width = pane_width(winid) - 1
    if type(max_width) == "number" and max_width > 0 then width = math.min(width, max_width) end
    return math.max(20, width)
 end
@@ -155,7 +161,7 @@ local function render_body(document, message, mode, options)
    end
 end
 
-local function render_attachments(document, message, width)
+local function render_attachments(document, message, width, rule_width)
    local listed = {}
    for _, attachment in ipairs(message.attachments or {}) do
       -- Inline images placed by the HTML body are shown where they appear.
@@ -163,7 +169,7 @@ local function render_attachments(document, message, width)
    end
    if #listed == 0 then return end
    document:blank()
-   document:rule(width)
+   document:rule(rule_width)
    local title = ("%d attachment%s"):format(#listed, #listed == 1 and "" or "s")
    local title_row = document:push(title)
    document:mark(title_row, 0, #title, { hl = "ZenvoyLabel" })
@@ -213,7 +219,7 @@ end
 ---@return string
 function M.foldtext()
    local count = vim.v.foldend - vim.v.foldstart + 1
-   return ("  ··· %d quoted line%s (zo to expand)"):format(count, count == 1 and "" or "s")
+   return ("  ··· %d quoted line%s (Enter to expand)"):format(count, count == 1 and "" or "s")
 end
 
 ---@param popup table NUI popup
@@ -231,6 +237,8 @@ function M.render(popup, message, status, options)
    set_title(popup, subject)
 
    local width = text_width(popup.winid, options.max_width)
+   -- The separators between header, body and attachments span the whole pane.
+   local rule_width = pane_width(popup.winid)
    local document = Document.new()
    header(document, "From:", address_runs(message.from), width, { placeholder = "—" })
    header(document, "To:", address_runs(message.to), width, { placeholder = "—" })
@@ -246,7 +254,7 @@ function M.render(popup, message, status, options)
       }, width)
    end
    header(document, "Subject:", { { text = subject, hl = { "ZenvoySubject" } } }, width)
-   document:rule(width)
+   document:rule(rule_width)
    document:blank()
 
    if status ~= nil then
@@ -256,7 +264,7 @@ function M.render(popup, message, status, options)
       render_body(document, message, view.mode, {
          width = width, fold_quotes = options.fold_quotes ~= false,
       })
-      render_attachments(document, message, width)
+      render_attachments(document, message, width, rule_width)
    end
    document:finish()
    paint(popup, document)

@@ -49,7 +49,7 @@ t.test("s and j change real sidebar focus and mailbox content without opening a 
    lua([[require("zenvoy.ui").close()]])
 end)
 
-t.test("batched open and sidebar/back inputs drain layout work before removing the message", function()
+t.test("batched open, h, sidebar and back inputs drain layout work before closing panes", function()
    lua([[
       _G.layout_errors = {}
       local schedule = vim.schedule
@@ -60,7 +60,16 @@ t.test("batched open and sidebar/back inputs drain layout work before removing t
          end)
       end
    ]])
-   for _, action in ipairs({ "s", "q" }) do
+   -- Each change shows or hides panes before NUI has positioned the previous ones.
+   for _, case in ipairs({
+      { keys = "s", focus = "sidebar_popup" },
+      { keys = "q", focus = "listing_popup" },
+      { keys = "zq", focus = "listing_popup" },
+      { keys = "zzq", focus = "listing_popup" },
+      { keys = "zs", focus = "sidebar_popup" },
+      { keys = "z", focus = "email_popup", full = true },
+      { keys = "zz", focus = "email_popup", split = true },
+   }) do
       lua([[
          local ui = require("zenvoy.ui")
          ui.set_mailbox_loader(function(id, callback) callback(nil, { { id = "selected" } }) end)
@@ -71,13 +80,19 @@ t.test("batched open and sidebar/back inputs drain layout work before removing t
          ui.set_envelopes({ { id = "selected" } })
          ui.create()
       ]])
-      input("<CR>" .. action)
-      wait_for([[return not require("zenvoy.state").email_visible]])
-      -- Let both the layout positioning callback and folder debounce complete.
+      input("<CR>" .. case.keys)
+      -- Let both the layout positioning callbacks and folder debounce complete.
       vim.wait(220, function() return false end, 10)
       t.equal({}, lua("return _G.layout_errors"))
-      local expected = action == "s" and "sidebar_popup" or "listing_popup"
-      t.equal(true, lua([[return vim.api.nvim_get_current_win() == require("zenvoy.state")[...].winid]], expected))
+      t.equal({ case.keys, true }, { case.keys, lua([[
+         return vim.api.nvim_get_current_win() == require("zenvoy.state")[...].winid
+      ]], case.focus) })
+      local panes = lua([[
+         local state = require("zenvoy.state")
+         return { email = state.email_visible, list = state.listing_popup.winid ~= nil }
+      ]])
+      local email = case.full or case.split or false
+      t.equal({ case.keys, email, not case.full }, { case.keys, panes.email, panes.list })
       lua([[require("zenvoy.ui").close()]])
    end
 end)
