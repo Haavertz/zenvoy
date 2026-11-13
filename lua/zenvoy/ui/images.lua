@@ -72,7 +72,7 @@ function Images:activate(image)
    local host = authority:match("@([^@]+)$") or authority
    host = host:gsub(":%d+$", "")
    self.choose({ "Show image", "Cancel" }, {
-      prompt = "Download image from " .. host .. "?",
+      prompt = "Download image from " .. host .. "?", title = "Remote image",
    }, function(choice)
       if generation == self.generation and choice == "Show image" then load() end
    end)

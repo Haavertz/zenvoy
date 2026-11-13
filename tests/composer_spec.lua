@@ -8,11 +8,11 @@ local function flush()
    vim.wait(20, function() return false end, 5)
 end
 
-local function make()
+local function make(extra)
    for _, controller in ipairs(controllers) do controller:detach() end
    flush()
    local observed = { choices = {}, sends = {}, preparations = {}, activities = {}, notices = {}, inputs = {} }
-   local controller = Composer.new({
+   local controller = Composer.new(vim.tbl_extend("force", {
       choose = function(items, options, callback)
          observed.choices[#observed.choices + 1] = { items = items, options = options, callback = callback }
       end,
@@ -43,7 +43,7 @@ local function make()
          return function() item.finishes = item.finishes + 1 end
       end,
       notify = function(message) observed.notices[#observed.notices + 1] = message end,
-   })
+   }, extra or {}))
    controllers[#controllers + 1] = controller
    return controller, observed
 end
@@ -333,6 +333,97 @@ t.test("synchronous preparation and delivery exceptions release their activity",
    t.equal(1, observed.activities[2].finishes)
    assert(observed.notices[1]:find("prepare spawn failed", 1, true))
    assert(observed.notices[2]:find("send spawn failed", 1, true))
+end)
+
+-- Layout ----------------------------------------------------------------------
+
+local function frame_lines(session)
+   return vim.api.nvim_buf_get_lines(session.frame.bufnr, 0, -1, false)
+end
+
+local function place(winid)
+   local row, col = unpack(vim.api.nvim_win_get_position(winid))
+   return { row = row, col = col, width = vim.api.nvim_win_get_width(winid), height = vim.api.nvim_win_get_height(winid) }
+end
+
+-- The highlight of the label drawn on a frame row, after "│ ".
+local function label_group(session, row)
+   for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.frame.bufnr, -1, { row, 0 }, { row, -1 }, { details = true })) do
+      if mark[3] == #"│ " then return mark[4].hl_group end
+   end
+end
+
+t.test("the form is one straight frame over the Zenvoy window with one-line labeled headers", function()
+   local bounds = { row = 2, col = 4, width = 70, height = 22 }
+   local controller = make({ bounds = function() return bounds end })
+   controller:open()
+   local session = controller.session
+   t.equal(bounds, place(session.frame.winid))
+   t.equal(false, vim.api.nvim_win_get_config(session.frame.winid).focusable)
+
+   local lines = frame_lines(session)
+   t.equal(22, #lines)
+   for _, line in ipairs(lines) do t.equal(70, vim.api.nvim_strwidth(line)) end
+   local function framed(line, left, text, right)
+      return vim.startswith(line, left .. "─") and vim.endswith(line, "─" .. right) and line:find(text, 1, true) ~= nil
+   end
+   assert(framed(lines[1], "┌", " ■ New message ■ ", "┐"), lines[1])
+   t.equal("│ To" .. (" "):rep(65) .. "│", lines[2])
+   t.equal("│ Subject" .. (" "):rep(60) .. "│", lines[5])
+   t.equal("├" .. ("─"):rep(68) .. "┤", lines[6])
+   t.equal("├" .. ("─"):rep(68) .. "┤", lines[20])
+   assert(lines[21]:find("^│ Files "), lines[21])
+   assert(framed(lines[22], "└", " Tab/S-Tab fields  C-a attach  C-s send  Esc/q close ", "┘"), lines[22])
+
+   for index, name in ipairs({ "to", "cc", "bcc", "subject" }) do
+      t.equal({ row = 2 + index, col = 15, width = 57, height = 1 }, place(session.fields[name].winid))
+      t.equal(false, vim.wo[session.fields[name].winid].wrap)
+   end
+   t.equal({ row = 8, col = 6, width = 66, height = 13 }, place(session.fields.body.winid))
+   t.equal(true, vim.wo[session.fields.body.winid].wrap)
+   t.equal({ row = 22, col = 15, width = 57, height = 1 }, place(session.fields.attachments.winid))
+
+   -- The label of the field being edited stands out.
+   t.equal("ZenvoyLabel", label_group(session, 1))
+   t.equal("ZenvoyMuted", label_group(session, 2))
+   map(session, "to", "n", "<Tab>")()
+   t.equal("ZenvoyMuted", label_group(session, 1))
+   t.equal("ZenvoyLabel", label_group(session, 2))
+
+   -- Two files take two rows from the body; the form follows the window when it resizes.
+   write(session, "attachments", "/tmp/a\n/tmp/b")
+   controller:_refresh(session)
+   t.equal({ row = 8, col = 6, width = 66, height = 12 }, place(session.fields.body.winid))
+   t.equal({ row = 21, col = 15, width = 57, height = 2 }, place(session.fields.attachments.winid))
+   bounds = { row = 1, col = 2, width = 60, height = 20 }
+   vim.api.nvim_exec_autocmds("VimResized", {})
+   flush()
+   t.equal(bounds, place(session.frame.winid))
+   t.equal({ row = 7, col = 4, width = 56, height = 10 }, place(session.fields.body.winid))
+   t.equal(20, #frame_lines(session))
+end)
+
+t.test("the frame names the kind of message and shows preparation and sending in its border", function()
+   local controller, observed = make()
+   controller:open({ id = "native/id", all = true })
+   local session = controller.session
+   assert(frame_lines(session)[1]:find("■ Reply all ■", 1, true), frame_lines(session)[1])
+   assert(frame_lines(session)[#frame_lines(session)]:find(" Preparing reply… ", 1, true))
+   observed.preparations[1].callback(nil, { to = "alice@example.test", subject = "Re: Hello", body = "\n\n> Hello" })
+   flush()
+   assert(frame_lines(session)[#frame_lines(session)]:find("C-s send", 1, true))
+   send(controller, observed)
+   assert(frame_lines(session)[#frame_lines(session)]:find(" Sending… ", 1, true))
+   observed.sends[1].callback("network failed")
+   assert(frame_lines(session)[#frame_lines(session)]:find("C-s send", 1, true))
+   controller:detach()
+
+   controller:open({ id = "native/id" })
+   assert(frame_lines(controller.session)[1]:find("■ Reply ■", 1, true))
+   controller:detach()
+   controller:open({ id = "native/id", forward = true })
+   assert(frame_lines(controller.session)[1]:find("■ Forward ■", 1, true))
+   assert(frame_lines(controller.session)[#frame_lines(controller.session)]:find("Preparing forward…", 1, true))
 end)
 
 local directory = vim.fn.tempname() .. "-zenvoy-composer"

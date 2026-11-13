@@ -5,6 +5,7 @@ local Line = require("nui.line")
 local Text = require("nui.text")
 local config = require("zenvoy.config")
 local keymaps = require("zenvoy.keymaps")
+local BORDER = require("zenvoy.ui.layout").BORDER
 
 local function key_label(action_name)
     local keys = keymaps.keys_for(config.get().keymaps, action_name)
@@ -29,7 +30,7 @@ function M.create(on_close)
         enter = true,
         focusable = true,
         border = {
-            style = "rounded",
+            style = BORDER,
             padding = {
                 top = 1,
                 bottom = 1,

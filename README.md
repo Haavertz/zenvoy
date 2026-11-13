@@ -72,6 +72,11 @@ In the message pane:
 | `T` | Switch between the formatted (HTML) and plain-text versions |
 | `zo` / `zc` | Expand / collapse quoted text |
 
+Confirmations and short menus open a small dialog in the middle of the screen.
+`h` / `l`, the arrow keys or `Tab` move between its buttons, `Enter` chooses, and
+`Escape` or `q` cancels. The safe choice, such as **Cancel** or **Keep
+editing**, has the focus first, so `Enter` alone never sends or discards.
+
 ### Reading
 
 Messages open with a header block (From, To, Cc, Reply-To when it differs,
@@ -126,25 +131,28 @@ also require `curl`.
 
 ### Composing
 
-The floating composer has **To, Cc, Bcc, Subject, Body, and Attachments**
-fields. Use `Tab` or `Shift-Tab` to move between them in normal or insert mode.
+The composer covers the Zenvoy window like a webmail compose page: **To, Cc,
+Bcc and Subject** on one labeled line each, the message below them, and the
+attached **Files** at the bottom. Use `Tab` or `Shift-Tab` to move between the
+fields in normal or insert mode; the label of the current one is highlighted.
 Enter multiple recipients separated by commas. New messages start in To; replies
-start above the editable quoted original in Body, after an
+start above the editable quoted original in the message, after an
 "On <date>, <sender> wrote:" line.
 
 To attach files, press `Ctrl-a` in any field and choose a file with path
 completion, or type, paste or complete (`Ctrl-x Ctrl-f`) one path per line in
-Attachments. `~`, `$VARIABLES`, quoted paths and `file://` URLs are accepted.
+Files. `~`, `$VARIABLES`, quoted paths and `file://` URLs are accepted.
 Each line shows the file size, or why it cannot be attached. Delete a line to
 remove the file. Attachments work the same way in new messages, replies and
 forwards.
 
 Forwarding (`f`) downloads the original attachments to a private temporary
-directory and lists them in Attachments, so you can remove any of them before
+directory and lists them in Files, so you can remove any of them before
 sending. The original headers and text follow two empty lines left for your note.
 
-Press `Ctrl-s` to confirm sending; the confirmation states how many files and
-how many bytes are attached. Cancel keeps the draft open; a failed send also
+Press `Ctrl-s`, then choose **Send** in the dialog; it states how many files
+and how many bytes are attached, and the bottom border shows **Sending…** until
+Himalaya finishes. Cancel keeps the draft open; a failed send also
 keeps its text for a manual retry. `Escape` leaves insert mode normally. In
 normal mode, `Escape` or `q` closes the composer and asks before discarding
 changed text. A draft is held in memory only, and reopening the composer focuses
@@ -196,5 +204,6 @@ require("zenvoy").setup({
 Message-pane actions can be remapped the same way: `open_link`,
 `save_attachment`, `show_image`, `toggle_view`, `next_item` and
 `previous_item`. The default highlight groups (`ZenvoyLink`, `ZenvoyQuote`,
-`ZenvoyHeading`, `ZenvoyAttachment`, `ZenvoyLabel`, `ZenvoyMuted` and others)
-link to standard groups and can be overridden.
+`ZenvoyHeading`, `ZenvoyAttachment`, `ZenvoyLabel`, `ZenvoyMuted`,
+`ZenvoyButton`, `ZenvoyButtonActive` and others) link to standard groups and can
+be overridden.

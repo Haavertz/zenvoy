@@ -2,6 +2,7 @@
 -- are injected so the behavior can be tested without opening real programs.
 local attachments = require("zenvoy.core.attachments")
 local safe_url = require("zenvoy.render.html").safe_url
+local dialog = require("zenvoy.ui.dialog")
 
 local Reader = {}
 Reader.__index = Reader
@@ -9,7 +10,7 @@ Reader.__index = Reader
 ---@param options table
 function Reader.new(options)
    return setmetatable({
-      choose = options.choose or vim.ui.select,
+      choose = options.choose or function(...) return dialog.select(...) end,
       input = options.input or vim.ui.input,
       open = options.open or vim.ui.open,
       download = options.download,
@@ -60,7 +61,9 @@ end
 ---Show the real destination before acting on a link.
 ---@param url string
 function Reader:link_menu(url)
-   self.choose({ "Open link", "Copy link", "Cancel" }, { prompt = "Link: " .. display(url) }, function(choice)
+   self.choose({ "Open link", "Copy link", "Cancel" }, {
+      prompt = "Link: " .. display(url), title = "Link",
+   }, function(choice)
       if choice == "Open link" then
          self:open_link(url)
       elseif choice == "Copy link" then
@@ -119,7 +122,7 @@ function Reader:open_attachment(attachment, context)
    end
    if attachments.is_executable(attachment.name) then
       self.choose({ "Cancel", "Open anyway" }, {
-         prompt = name .. " can run code on this computer. Open it?",
+         prompt = name .. " can run code on this computer. Open it?", title = "Open attachment",
       }, function(choice)
          if choice == "Open anyway" then run() end
       end)
@@ -131,7 +134,7 @@ end
 function Reader:attachment_menu(attachment, context)
    local size = attachments.format_size(attachment.size)
    local prompt = display(attachment.name) .. (size and (" (" .. size .. ")") or "")
-   self.choose({ "Open", "Save", "Save to…", "Cancel" }, { prompt = prompt }, function(choice)
+   self.choose({ "Open", "Save", "Save to…", "Cancel" }, { prompt = prompt, title = "Attachment" }, function(choice)
       if choice == "Open" then
          self:open_attachment(attachment, context)
       elseif choice == "Save" then
@@ -154,7 +157,9 @@ function Reader:save_any(list, context)
    local labels = {}
    for index, attachment in ipairs(list) do labels[index] = display(attachment.name) end
    labels[#labels + 1] = "All attachments"
-   self.choose(labels, { prompt = "Save attachment" }, function(_, index)
+   self.choose(labels, {
+      prompt = "Which attachment do you want to save?", title = "Save attachment", kind = "list",
+   }, function(_, index)
       if not index then return end
       if index == #labels then
          for _, attachment in ipairs(list) do self:save(attachment, context) end

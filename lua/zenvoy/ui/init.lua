@@ -16,6 +16,7 @@ local ImageCache = require("zenvoy.core.image_cache")
 local ImageController = require("zenvoy.ui.images")
 local image_preview = require("zenvoy.ui.image_preview")
 local Reader = require("zenvoy.ui.reader")
+local dialog = require("zenvoy.ui.dialog")
 local pending_request
 local pending_message
 local message_reader
@@ -186,7 +187,7 @@ local function show_image(item)
       image_cache = ImageCache.new(Process.new({ timeout = config.get().himalaya.timeout }))
       image_controller = ImageController.new({
          preview = image_preview,
-         choose = function(items, options, callback) vim.ui.select(items, options, callback) end,
+         choose = function(items, options, callback) dialog.select(items, options, callback) end,
          load = function(source, callback) return image_cache:load(source, callback) end,
          activity = function(label) return activity:start(label) end,
          notify = vim.notify,
@@ -203,7 +204,7 @@ end
 local function get_reader()
    if not reader then
       reader = Reader.new({
-         choose = function(items, options, callback) vim.ui.select(items, options, callback) end,
+         choose = function(items, options, callback) dialog.select(items, options, callback) end,
          input = function(options, callback) vim.ui.input(options, callback) end,
          open = function(target) return vim.ui.open(target) end,
          download = function(id, mailbox, ids, directory, callback)
@@ -249,8 +250,8 @@ local function reader_action(action)
       if not item then return end
       if item.kind == "image" then
          if item.url then
-            vim.ui.select({ "Show image", "Open link", "Copy link", "Cancel" }, {
-               prompt = "Image linking to " .. item.url:gsub("%c", ""),
+            dialog.select({ "Show image", "Open link", "Copy link", "Cancel" }, {
+               prompt = "Image linking to " .. item.url:gsub("%c", ""), title = "Image link",
             }, function(choice)
                if choice == "Show image" then
                   show_image(item)
@@ -321,6 +322,8 @@ local function clear_session()
    cancel_message()
    mailboxes:clear()
    if composer then composer:detach(); composer = nil end
+   -- After the composer is gone, so a cancelled confirmation cannot refocus it.
+   dialog.close()
    message_reader = nil
    mailbox_loader = nil
    activity:clear()
@@ -408,6 +411,16 @@ function M.set_composer(operations)
       activity = function(label) return activity:start(label) end,
       notify = vim.notify,
       input = function(options, callback) vim.ui.input(options, callback) end,
+      -- The form covers the Zenvoy window exactly, like a compose page.
+      bounds = function()
+         local winid = state.layout and state.layout.winid
+         if not winid or not vim.api.nvim_win_is_valid(winid) then return nil end
+         local row, col = unpack(vim.api.nvim_win_get_position(winid))
+         return {
+            row = row, col = col,
+            width = vim.api.nvim_win_get_width(winid), height = vim.api.nvim_win_get_height(winid),
+         }
+      end,
    })
 end
 

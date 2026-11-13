@@ -3,6 +3,9 @@ local M = {}
 local Popup = require("nui.popup")
 local Text = require("nui.text")
 
+-- Every Zenvoy window uses square corners.
+M.BORDER = "single"
+
 ---@param title string
 ---@param win_options? table
 ---@return table Popup
@@ -12,7 +15,7 @@ function M.create_popup(title, win_options)
     focusable = true,
     relative = "editor",
     border = {
-      style = "rounded",
+      style = M.BORDER,
       text = {
         top = Text(string.format(" ■ %s ■ ", title), "FloatTitle"),
         top_align = "center",

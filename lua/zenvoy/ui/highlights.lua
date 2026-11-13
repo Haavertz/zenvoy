@@ -19,6 +19,8 @@ local groups = {
    ZenvoyImage = { link = "Special" },
    ZenvoyAttachment = { link = "Directory" },
    ZenvoyError = { link = "DiagnosticError" },
+   ZenvoyButton = { link = "NormalFloat" },
+   ZenvoyButtonActive = { link = "PmenuSel" },
 }
 
 local augroup

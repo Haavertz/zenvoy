@@ -1,6 +1,6 @@
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
 local t = dofile("tests/helpers.lua")
-local jobs, choices, notices = {}, {}, {}
+local jobs, notices = {}, {}
 vim.system = function(command, options, callback)
    local job = { command = command, options = options, exit = callback, kills = 0 }
    function job:kill() self.kills = self.kills + 1 end
@@ -8,7 +8,8 @@ vim.system = function(command, options, callback)
    return job
 end
 vim.fn.filereadable = function() return 1 end
-vim.ui.select = function(items, options, callback) choices[#choices + 1] = { items = items, callback = callback } end
+-- Confirmations use Zenvoy's own dialog, never the global picker.
+vim.ui.select = function() error("vim.ui.select must not be used") end
 vim.notify = function(text) notices[#notices + 1] = text end
 local app, state, ui = require("zenvoy"), require("zenvoy.state"), require("zenvoy.ui")
 
@@ -37,7 +38,7 @@ local function content(name)
 end
 local function open()
    ui.close(true)
-   jobs, choices, notices = {}, {}, {}
+   jobs, notices = {}, {}
    app.setup()
    app.open()
    complete(jobs[1], '{"mailboxes":[{"id":"native/archive"}]}')
@@ -45,7 +46,7 @@ local function open()
 end
 local function confirm_send()
    map(field("body"), "<C-S>")()
-   choices[#choices].callback("Send")
+   t.answer("Send")
    flush()
 end
 
@@ -54,6 +55,16 @@ t.test("c opens a working form and only confirmed submissions reach the sending 
    local previous = state.listing_popup.winid
    map(state.listing_popup.bufnr, "c")()
    assert(field("to"), "c must open the composer")
+   -- The form covers the Zenvoy window exactly, so no pane border shows around it.
+   local function rect(winid)
+      local row, col = unpack(vim.api.nvim_win_get_position(winid))
+      return { row, col, vim.api.nvim_win_get_width(winid), vim.api.nvim_win_get_height(winid) }
+   end
+   local frame
+   for _, winid in ipairs(vim.api.nvim_list_wins()) do
+      if vim.bo[vim.api.nvim_win_get_buf(winid)].filetype == "zenvoy-compose" then frame = winid end
+   end
+   t.equal(rect(state.layout.winid), rect(assert(frame, "the compose frame should be open")))
    write("to", "bob@example.test")
    write("cc", "carol@example.test")
    write("bcc", "hidden@example.test")
@@ -61,7 +72,7 @@ t.test("c opens a working form and only confirmed submissions reach the sending 
    write("body", "First line\nSecond line")
    map(field("body"), "<C-S>")()
    t.equal(2, #jobs)
-   choices[1].callback("Cancel")
+   t.answer("Cancel")
    t.equal("First line\nSecond line", content("body"))
    confirm_send()
    t.equal("compose", jobs[3].command[3])
@@ -120,7 +131,7 @@ t.test("API close protects changed drafts and external close lets dispatched del
    write("to", "bob@example.test")
    write("body", "Keep this")
    app.close()
-   choices[#choices].callback("Keep editing")
+   t.answer("Keep editing")
    t.equal(true, state.is_open)
    t.equal("Keep this", content("body"))
    confirm_send()

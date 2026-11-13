@@ -112,5 +112,66 @@ t.test("insert Ctrl-s confirms a completed draft without inserting control text"
    wait_for("return not _G.composer:is_open()", "successful send should close composer")
 end)
 
+local function dialog_open(description)
+   wait_for('return vim.bo.filetype == "zenvoy-dialog" and vim.api.nvim_get_mode().mode == "n"', description)
+end
+
+t.test("the real send dialog opens from insert mode and Enter alone does not send", function()
+   lua([[
+      _G.sends = {}
+      _G.composer = require("zenvoy.ui.composer").new({
+         send = function(draft, callback)
+            table.insert(_G.sends, { draft = draft, callback = callback })
+         end,
+         notify = function() end,
+      })
+      _G.composer:open()
+   ]])
+   field("to", "i")
+   input("alice@example.test<Tab><Tab><Tab>")
+   field("subject", "i")
+   input("Dialog send<Tab>Hello<C-s>")
+   dialog_open("insert Ctrl-s should open the send dialog in normal mode")
+   t.equal({ "Send this email?", "", "[ Cancel ]   [ Send ]" }, lua([[
+      return vim.tbl_map(vim.trim, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+   ]]))
+   input("<CR>")
+   field("body", "n")
+   t.equal(0, lua("return #_G.sends"))
+   t.equal("Hello", lua("return vim.api.nvim_buf_get_lines(_G.composer.session.fields.body.bufnr, 0, -1, false)[1]"))
+   input("<C-s>")
+   dialog_open("normal Ctrl-s should open the send dialog")
+   input("l<CR>")
+   wait_for("return #_G.sends == 1", "l and Enter should send")
+   t.equal("Dialog send", lua("return _G.sends[1].draft.subject"))
+   lua("_G.sends[1].callback(nil)")
+   wait_for("return not _G.composer:is_open()", "successful send should close composer")
+end)
+
+t.test("the real discard dialog keeps the draft on Escape or Enter and discards on request", function()
+   lua([[
+      _G.composer = require("zenvoy.ui.composer").new({ notify = function() end })
+      _G.composer:open()
+   ]])
+   field("to", "i")
+   input("alice@example.test<Esc>")
+   field("to", "n")
+   input("q")
+   dialog_open("q should ask before discarding")
+   input("<Esc>")
+   field("to", "n")
+   input("q")
+   dialog_open("q should ask again")
+   input("<CR>")
+   field("to", "n")
+   t.equal("alice@example.test", lua([[
+      return vim.api.nvim_buf_get_lines(_G.composer.session.fields.to.bufnr, 0, -1, false)[1]
+   ]]))
+   input("q")
+   dialog_open("q should ask a third time")
+   input("l<CR>")
+   wait_for("return not _G.composer:is_open()", "Discard should close the composer")
+end)
+
 vim.fn.jobstop(child)
 t.finish("composer_input_spec")

@@ -100,7 +100,7 @@ end)
 -- Message pane integration ---------------------------------------------------------
 
 vim.o.columns, vim.o.lines = 200, 60
-local jobs, notifications, selections, opened = {}, {}, {}, {}
+local jobs, notifications, opened = {}, {}, {}
 vim.system = function(command, options, callback)
    local job = { command = command, options = options, exit = callback, kills = 0 }
    function job:kill() self.kills = self.kills + 1 end
@@ -109,9 +109,8 @@ vim.system = function(command, options, callback)
 end
 vim.fn.filereadable = function() return 1 end
 vim.notify = function(message) notifications[#notifications + 1] = message end
-vim.ui.select = function(items, options, callback)
-   selections[#selections + 1] = { items = items, prompt = options.prompt, callback = callback }
-end
+-- Menus use Zenvoy's own dialog, never the global picker.
+vim.ui.select = function() error("vim.ui.select must not be used") end
 vim.ui.open = function(target)
    opened[#opened + 1] = target
    return {}
@@ -135,6 +134,10 @@ local function status()
    local border = state.email_popup.border
    return vim.api.nvim_buf_get_lines(border.bufnr, -2, -1, false)[1]
 end
+local function corners(popup)
+   local lines = vim.api.nvim_buf_get_lines(popup.border.bufnr, 0, -1, false)
+   return { lines[1]:sub(1, 3), lines[#lines]:sub(1, 3) }
+end
 
 local function message_json()
    local value = vim.json.decode(table.concat(vim.fn.readfile("tests/fixtures/messages/nested.json"), "\n"))
@@ -146,7 +149,7 @@ end
 
 local function open_message()
    app.close()
-   jobs, notifications, selections, opened = {}, {}, {}, {}
+   jobs, notifications, opened = {}, {}, {}
    app.setup({ attachments = { download_dir = "/tmp/zenvoy-downloads" } })
    app.open()
    complete(jobs[1], '{"mailboxes":[{"id":"Inbox"}]}')
@@ -161,6 +164,9 @@ end
 
 t.test("Tab walks links, inline images and attachments while the border shows the target", function()
    open_message()
+   for _, popup in ipairs({ state.sidebar_popup, state.listing_popup, state.email_popup }) do
+      t.equal({ "┌", "└" }, corners(popup))
+   end
    press("<Tab>")
    t.equal("first", line():sub(cursor()[2] + 1, cursor()[2] + 5))
    assert(status():find("→ https://example.com/a", 1, true), status())
@@ -182,13 +188,23 @@ t.test("Enter and gx open links only after an explicit action", function()
    open_message()
    press("<Tab>")
    press("<CR>")
-   t.equal("Link: https://example.com/a", selections[1].prompt)
+   local menu = assert(t.dialog(), "Enter should ask before opening a link")
+   t.equal("Link: https://example.com/a", vim.trim(menu.lines[1]))
+   t.equal({ "Open link", "Copy link", "Cancel" }, menu.labels)
    t.equal({}, opened)
-   selections[1].callback("Open link")
+   t.answer("Open link")
    t.equal({ "https://example.com/a" }, opened)
+   -- The dialog returns to the message, so its keys keep working.
+   t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
    press("<Tab>")
    press("gx")
    t.equal({ "https://example.com/a", "https://example.com/b" }, opened)
+   -- Closing Zenvoy also closes an open menu without acting on it.
+   press("<CR>")
+   assert(t.dialog(), "Enter should ask again")
+   app.close()
+   t.equal(nil, t.dialog())
+   t.equal(2, #opened)
 end)
 
 t.test("S and Open download the attachment under the cursor through Himalaya", function()
@@ -201,12 +217,14 @@ t.test("S and Open download the attachment under the cursor through Himalaya", f
    complete(jobs[count + 1], '{"attachments":[{"id":"7","size":50,"inline":false,"path":"/tmp/zenvoy-downloads/sample.bin"}]}')
    t.equal("Zenvoy: saved /tmp/zenvoy-downloads/sample.bin", notifications[#notifications])
    press("<CR>")
-   t.equal({ "Open", "Save", "Save to…", "Cancel" }, selections[1].items)
-   selections[1].callback("Open")
+   t.equal({ "Open", "Save", "Save to…", "Cancel" }, assert(t.dialog()).labels)
+   t.answer("Open")
    -- sample.bin is an executable type: opening it needs a second confirmation.
-   t.equal({ "Cancel", "Open anyway" }, selections[2].items)
+   local warning = assert(t.dialog(), "opening an executable type should ask again")
+   t.equal({ "Cancel", "Open anyway" }, warning.labels)
+   t.equal("Cancel", warning.focus)
    t.equal(count + 1, #jobs)
-   selections[2].callback("Open anyway")
+   t.answer("Open anyway")
    local download = jobs[count + 2]
    assert(not vim.tbl_contains(download.command, "--dir=/tmp/zenvoy-downloads"), vim.inspect(download.command))
    complete(download, '{"attachments":[{"id":"7","size":50,"inline":false,"path":"/tmp/nvim/x/sample.bin"}]}')
