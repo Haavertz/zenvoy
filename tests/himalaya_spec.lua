@@ -26,14 +26,14 @@ t.test("lists mailboxes and preserves identities and optional counts", function(
    t.equal({ { id = "[Gmail]/Spam", name = "Spam", total = 42, unread = 7 } }, result.response)
 end)
 
-t.test("lists 50 envelopes in the default mailbox and preserves message fields", function()
+t.test("lists 40 envelopes in the default mailbox and preserves message fields", function()
    local client, result, callback = fixture([[{"envelopes":[{
       "id":"30222","subject":"Test email","flags":[{"iana":"seen","raw":"\\Seen"}],
       "from":[{"name":null,"email":"alice@example.com"}],"to":[],"in-reply-to":[],
       "date":"2026-09-06T01:58:21Z","size":100,"has-attachment":null
    }]}]])
    client:list_envelopes(callback)
-   t.equal({ "himalaya", "envelope", "list", "-s", "50", "--json", "--log-level", "off" }, result.command)
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--json", "--log-level", "off" }, result.command)
    t.equal(nil, result.err)
    t.equal("30222", result.response[1].id)
    t.equal("seen", result.response[1].flags[1].iana)
@@ -50,16 +50,27 @@ t.test("supports a custom executable and page size without sharing options", fun
    local default, other, on_result = fixture('{"envelopes":[]}')
    default:list_envelopes(on_result)
    t.equal("himalaya", other.command[1])
-   t.equal("50", other.command[5])
+   t.equal("40", other.command[5])
 end)
 
 t.test("lists an explicit native mailbox without changing the default listing", function()
    local client, result, callback = fixture('{"envelopes":[]}')
    client:list_envelopes(callback, "[Gmail]/Sent Mail")
-   t.equal({ "himalaya", "envelope", "list", "-s", "50", "--mailbox", "[Gmail]/Sent Mail",
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--mailbox", "[Gmail]/Sent Mail",
       "--json", "--log-level", "off" }, result.command)
    client:list_envelopes(callback)
-   t.equal({ "himalaya", "envelope", "list", "-s", "50", "--json", "--log-level", "off" }, result.command)
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--json", "--log-level", "off" }, result.command)
+end)
+
+t.test("asks for later pages and leaves the first page implicit", function()
+   local client, result, callback = fixture('{"envelopes":[]}')
+   client:list_envelopes(callback, "[Gmail]/Sent Mail", 3)
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--page", "3", "--mailbox", "[Gmail]/Sent Mail",
+      "--json", "--log-level", "off" }, result.command)
+   client:list_envelopes(callback, nil, 2)
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--page", "2", "--json", "--log-level", "off" }, result.command)
+   client:list_envelopes(callback, nil, 1)
+   t.equal({ "himalaya", "envelope", "list", "-s", "40", "--json", "--log-level", "off" }, result.command)
 end)
 
 t.test("accepts empty lists and nullable optional collections", function()

@@ -352,12 +352,13 @@ t.test("z shows the email over the whole window and back; the next email opens b
    t.equal(state.email_popup.winid, vim.api.nvim_get_current_win())
 end)
 
-t.test("s from an email over the whole window returns to the list with the folders focused", function()
+t.test("s from an email over the whole window shows the folders again and focuses them", function()
    open()
    select(2)
    press("z")
    press("s")
-   t.equal(false, state.email_visible)
+   t.equal(false, state.email_fullscreen)
+   assert(state.listing_popup.winid, "the list is back")
    t.equal(state.sidebar_popup.winid, vim.api.nvim_get_current_win())
 end)
 

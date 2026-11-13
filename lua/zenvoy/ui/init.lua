@@ -18,6 +18,7 @@ local image_preview = require("zenvoy.ui.image_preview")
 local Reader = require("zenvoy.ui.reader")
 local dialog = require("zenvoy.ui.dialog")
 local help = require("zenvoy.ui.help")
+local mailboxes
 local pending_request
 local pending_message
 local message_reader
@@ -228,6 +229,8 @@ local function cancel_message()
 end
 
 local function open_message(selected)
+   -- Opening an email keeps the list on its page.
+   mailboxes:cancel_page()
    cancel_message()
    state.open_envelope = selected
    local popup = state.email_popup
@@ -418,8 +421,19 @@ local function reader_action(action)
    end
 end
 
-local mailboxes = Mailboxes.new({
-   load = function(mailbox, callback) return mailbox_loader(mailbox, callback) end,
+-- A new page replaces the list and starts at its first email; an open email stays.
+local function show_page(page, records)
+   state.current_page = page
+   M.set_envelopes(records)
+   listing_cursor = { 1, 0 }
+   local popup = state.listing_popup
+   if popup and popup.winid and vim.api.nvim_win_is_valid(popup.winid) then
+      vim.api.nvim_win_set_cursor(popup.winid, { 1, 0 })
+   end
+end
+
+mailboxes = Mailboxes.new({
+   load = function(mailbox, callback, page) return mailbox_loader(mailbox, callback, page) end,
    activity = function(label) return activity:start(label) end,
    on_select = function(mailbox)
       cancel_message()
@@ -433,7 +447,37 @@ local mailboxes = Mailboxes.new({
    end,
    on_result = function(records) M.set_envelopes(records) end,
    on_error = function(err) vim.notify("Zenvoy: " .. err, vim.log.levels.ERROR) end,
+   on_page = function(page, err, records)
+      if err then
+         vim.notify("Zenvoy: " .. err, vim.log.levels.ERROR)
+      elseif #records == 0 and page > state.current_page then
+         vim.notify("Zenvoy: this is the last page", vim.log.levels.INFO)
+      else
+         show_page(page, records)
+      end
+   end,
 })
+
+-- n and N count from a page still loading, so n then N stays and N again goes back
+-- further. A next page is asked for only after a full one.
+local function change_page(step)
+   if not state.is_open or not mailbox_loader then return end
+   local loading = mailboxes:loading_page()
+   if loading == false then return end -- A whole mailbox is loading.
+   local shown, listed = state.current_page, #state.envelopes
+   local target = (loading or shown) + step
+   if target == shown then
+      mailboxes:cancel_page()
+   elseif target < 1 then
+      if listed > 0 then vim.notify("Zenvoy: this is the first page", vim.log.levels.INFO) end
+   elseif target > shown + 1 then
+      return
+   elseif target > shown and listed < config.get().himalaya.page_size then
+      if listed > 0 then vim.notify("Zenvoy: this is the last page", vim.log.levels.INFO) end
+   else
+      mailboxes:page(state.current_folder, target)
+   end
+end
 
 local function select_mailbox(options)
    local popup = state.sidebar_popup
@@ -491,6 +535,7 @@ local commands = command_factory.create({
    on_show_image = function() show_image() end,
    on_reader = reader_action,
    on_help = function() help.open(config.get().keymaps) end,
+   on_page = change_page,
 })
 
 -- Actions on links, images and attachments are mapped in the message pane only, so the
@@ -500,14 +545,16 @@ local message_only = {
    next_item = true, previous_item = true, toggle_fullscreen = true,
 }
 
+-- Page keys act on the email list, so `n` and `N` still repeat searches in the other panes.
+local listing_only = { next_page = true, previous_page = true }
+
 local function apply_keymaps(popup)
-   local mappings = config.get().keymaps
-   if popup ~= state.email_popup then
-      local filtered = {}
-      for lhs, action in pairs(mappings) do
-         if not message_only[action] then filtered[lhs] = action end
+   local mappings = {}
+   for lhs, action in pairs(config.get().keymaps) do
+      if (popup == state.email_popup or not message_only[action])
+         and (popup == state.listing_popup or not listing_only[action]) then
+         mappings[lhs] = action
       end
-      mappings = filtered
    end
    keymap.apply(popup.bufnr, mappings, commands)
 end
@@ -581,7 +628,8 @@ function M.set_envelopes(envelopes)
    if state.listing_popup then
       local popup = state.listing_popup
       local cursor = popup.winid and vim.api.nvim_win_is_valid(popup.winid) and vim.api.nvim_win_get_cursor(popup.winid)
-      state.listing_popup.border:set_text("top", (" ■ Emails (%d) ■ "):format(#state.envelopes), "center")
+      local title = (" ■ Emails (%d) · Page %d ■ "):format(#state.envelopes, state.current_page)
+      state.listing_popup.border:set_text("top", title, "center")
       envelope.render(state.listing_popup.bufnr, state.envelopes)
       if cursor then
          cursor[1] = math.max(1, math.min(cursor[1], #state.envelopes))

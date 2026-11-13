@@ -17,6 +17,7 @@ local M = {}
 ---@field on_show_image? fun() Render the image under the message cursor.
 ---@field on_reader? fun(action: string) Act on the item under the message cursor.
 ---@field on_help? fun() Show the keybindings.
+---@field on_page? fun(step: integer) Show the next (1) or previous (-1) page of emails.
 
 ---@param context ZenvoyCommandContext
 ---@return table

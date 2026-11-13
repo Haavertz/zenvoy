@@ -20,6 +20,8 @@ local SECTIONS = {
       rows = {
          { keys = { "j", "k" }, text = "move" },
          { action = "enter", text = "open" },
+         { action = "next_page", text = "next page" },
+         { action = "previous_page", text = "previous page" },
          { action = "compose", text = "compose" },
          { action = "reply", text = "reply" },
          { action = "reply_all", text = "reply all" },
@@ -80,15 +82,14 @@ local function section(spec, mappings)
    return { title = spec.title, rows = rows }
 end
 
----Lines of stacked sections; each line is `{ text, marks = { { col, end_col, hl } } }`.
+---Lines of stacked sections, each with its keys aligned; each line is
+---`{ text, marks = { { col, end_col, hl } } }`.
 local function column(sections)
-   local key_width = 0
-   for _, part in ipairs(sections) do
-      for _, row in ipairs(part.rows) do key_width = math.max(key_width, cells(row.key)) end
-   end
    local lines = {}
    for _, part in ipairs(sections) do
       if #part.rows > 0 then
+         local key_width = 0
+         for _, row in ipairs(part.rows) do key_width = math.max(key_width, cells(row.key)) end
          if #lines > 0 then lines[#lines + 1] = { text = "", marks = {} } end
          lines[#lines + 1] = { text = part.title, marks = { { 0, #part.title, "ZenvoyHeading" } } }
          for _, row in ipairs(part.rows) do
@@ -113,7 +114,7 @@ local function join(left, right)
    for index = 1, math.max(#left, #right) do
       local first, second = left[index] or { text = "", marks = {} }, right[index]
       local line = { text = first.text, marks = vim.deepcopy(first.marks) }
-      if second then
+      if second and second.text ~= "" then
          line.text = line.text .. string.rep(" ", left_width - cells(first.text) + GAP)
          local offset = #line.text
          line.text = line.text .. second.text
@@ -134,7 +135,7 @@ function M.lines(mappings, max_width)
    local emails = section(SECTIONS.emails, mappings)
    local reading = section(SECTIONS.reading, mappings)
    local writing = section(SECTIONS.writing, mappings)
-   local lines = join(column({ emails, writing }), column({ reading }))
+   local lines = join(column({ emails }), column({ reading, writing }))
    if width_of(lines) > max_width then lines = column({ emails, reading, writing }) end
    return lines
 end

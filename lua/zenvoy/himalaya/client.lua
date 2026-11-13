@@ -19,7 +19,7 @@ local Draft = require("zenvoy.himalaya.draft")
 
 ---@class ZenvoyMailClient
 ---@field list_mailboxes fun(self: ZenvoyMailClient, callback: fun(err: string?, records: ZenvoyMailbox[]?)): ZenvoyRequest?
----@field list_envelopes fun(self: ZenvoyMailClient, callback: fun(err: string?, records: ZenvoyEnvelope[]?), mailbox?: string): ZenvoyRequest?
+---@field list_envelopes fun(self: ZenvoyMailClient, callback: fun(err: string?, records: ZenvoyEnvelope[]?), mailbox?: string, page?: integer): ZenvoyRequest?
 ---@field read_message fun(self: ZenvoyMailClient, id: string, mailbox: string?, callback: fun(err: string?, message: ZenvoyMessage?), options?: { seen?: boolean }): ZenvoyRequest?
 ---@field prepare_reply fun(self: ZenvoyMailClient, id: string, mailbox: string?, reply_all: boolean, callback: fun(err: string?, draft: ZenvoyDraft?)): ZenvoyRequest?
 ---@field prepare_forward fun(self: ZenvoyMailClient, id: string, mailbox: string?, callback: fun(err: string?, draft: ZenvoyDraft?)): ZenvoyRequest?
@@ -68,7 +68,7 @@ function Client.new(process, options)
    return setmetatable({
       process = process,
       executable = options.executable or "himalaya",
-      page_size = options.page_size or 50,
+      page_size = options.page_size or 40,
       temporary_directory = options.temporary_directory or vim.fn.tempname,
    }, Client)
 end
@@ -109,9 +109,11 @@ end
 
 ---@param callback fun(err: string?, records: ZenvoyEnvelope[]?)
 ---@param mailbox? string
+---@param page? integer Starts at 1, the most recent envelopes; a page past the end is empty.
 ---@return ZenvoyRequest
-function Client:list_envelopes(callback, mailbox)
+function Client:list_envelopes(callback, mailbox, page)
    local command = { "envelope", "list", "-s", tostring(self.page_size) }
+   if page and page > 1 then vim.list_extend(command, { "--page", tostring(page) }) end
    if mailbox then vim.list_extend(command, { "--mailbox", mailbox }) end
    return self:_list("envelopes", command, callback)
 end

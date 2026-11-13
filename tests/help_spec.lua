@@ -30,33 +30,43 @@ local function press(lhs)
    error("missing help mapping " .. lhs)
 end
 
-t.test("every default key is listed in two columns: emails and writing, then reading", function()
+t.test("every default key is listed in two columns: emails, then reading and writing", function()
    config.setup()
    t.equal({
-      "Emails                                Reading",
-      "  j/k        move                       z      full screen on/off",
-      "  Enter      open                       Tab    next link or file",
-      "  c          compose                    S-Tab  previous link or file",
-      "  r          reply                      Enter  open link/file/quote",
-      "  R          reply all                  gx     open link",
-      "  f          forward                    S      save attachment",
-      "  s          folders                    T      HTML / plain text",
-      "  q          back / close               I      show image",
-      "  ?          keybindings",
-      "",
-      "Writing",
-      "  Tab/S-Tab  next / previous field",
-      "  C-a        attach file",
-      "  C-s        send",
-      "  Esc/q      close",
+      "Emails                    Reading",
+      "  j/k    move               z      full screen on/off",
+      "  Enter  open               Tab    next link or file",
+      "  n      next page          S-Tab  previous link or file",
+      "  N      previous page      Enter  open link/file/quote",
+      "  c      compose            gx     open link",
+      "  r      reply              S      save attachment",
+      "  R      reply all          T      HTML / plain text",
+      "  f      forward            I      show image",
+      "  s      folders",
+      "  q      back / close     Writing",
+      "  ?      keybindings        Tab/S-Tab  next / previous field",
+      "                            C-a        attach file",
+      "                            C-s        send",
+      "                            Esc/q      close",
    }, texts(help.lines(config.get().keymaps, 100)))
+end)
+
+t.test("the help fits an 80x24 editor without scrolling", function()
+   config.setup()
+   vim.o.columns, vim.o.lines = 80, 24
+   help.open(config.get().keymaps)
+   local view = assert(shown())
+   t.equal(#view.lines, vim.api.nvim_win_get_height(view.winid))
+   assert(view.lines[1]:find("Reading", 1, true), view.lines[1])
+   help.close()
+   vim.o.columns, vim.o.lines = 120, 40
 end)
 
 t.test("remapped keys are shown as configured and disabled ones are left out", function()
    config.setup({ keymaps = { s = false, gs = "focus_sidebar", z = false, ["<leader>v"] = "toggle_fullscreen" } })
    local text = table.concat(texts(help.lines(config.get().keymaps, 100)), "\n")
-   assert(text:find("  gs         folders", 1, true), text)
-   assert(not text:find("  s          folders", 1, true), text)
+   assert(text:find("  gs     folders", 1, true), text)
+   assert(not text:find("  s      folders", 1, true), text)
    assert(text:find("<leader>v  full screen on/off", 1, true), text)
    assert(not text:find("  z ", 1, true), text)
    config.setup()

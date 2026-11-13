@@ -36,19 +36,42 @@ local function move(row)
    vim.api.nvim_win_set_cursor(state.sidebar_popup.winid, { row, 0 })
    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = state.sidebar_popup.bufnr })
 end
-local function open(opts)
+local function open(opts, envelopes)
    app.close()
    jobs, notices = {}, {}
    app.setup(opts)
    app.open()
    complete(jobs[1], { mailboxes = { { id = "native/inbox" }, { id = "native/archive" }, { id = "native/sent" } } })
-   complete(jobs[2], { envelopes = { { id = "shared-id", subject = "Original", flags = {} } } })
+   complete(jobs[2], { envelopes = envelopes or { { id = "shared-id", subject = "Original", flags = {} } } })
    flush(180)
    t.equal(2, #jobs) -- Rendering must not select the first row implicitly.
 end
 local function footer()
    local border = state.sidebar_popup.border
    return table.concat(vim.api.nvim_buf_get_lines(border.bufnr, 0, -1, false), "\n")
+end
+local function page_arg(job)
+   for index, arg in ipairs(job.command) do
+      if arg == "--page" then return job.command[index + 1] end
+   end
+end
+local function title()
+   return vim.api.nvim_buf_get_lines(state.listing_popup.border.bufnr, 0, 1, false)[1]
+end
+local function ids()
+   local result = {}
+   for index, envelope in ipairs(state.envelopes) do result[index] = envelope.id end
+   return result
+end
+local function emails(prefix, count)
+   local result = {}
+   for index = 1, count do result[index] = { id = prefix .. index, subject = prefix .. index, flags = {} } end
+   return result
+end
+-- Two emails a page: full first and second pages, and a third with one email.
+local function open_pages()
+   open({ himalaya = { page_size = 2 } }, emails("a", 2))
+   vim.api.nvim_set_current_win(state.listing_popup.winid)
 end
 
 t.test("s focuses sidebar, navigation loads its native mailbox, Enter returns to list", function()
@@ -159,6 +182,122 @@ t.test("sidebar focus can be remapped and disabled", function()
    t.equal(false, pcall(mapping, state.listing_popup, "s"))
    mapping(state.listing_popup, "z")()
    t.equal(state.sidebar_popup.winid, vim.api.nvim_get_current_win())
+end)
+
+t.test("n and N page through the list, which stays until the next page arrives", function()
+   open_pages()
+   assert(title():find("Emails (2) · Page 1", 1, true), title())
+   mapping(state.listing_popup, "n")()
+   t.equal(3, #jobs)
+   t.equal("2", page_arg(jobs[3]))
+   t.equal(nil, mailbox_arg(jobs[3]))
+   t.equal({ "a1", "a2" }, ids())
+   assert(footer():find("Loading page 2", 1, true), footer())
+   assert(title():find("Page 1", 1, true), title())
+   complete(jobs[3], { envelopes = emails("b", 2) })
+   t.equal(2, state.current_page)
+   t.equal({ "b1", "b2" }, ids())
+   assert(title():find("Emails (2) · Page 2", 1, true), title())
+   assert(not footer():find("Loading", 1, true), footer())
+
+   -- A full page may be the last: an empty next page keeps it.
+   vim.api.nvim_win_set_cursor(state.listing_popup.winid, { 2, 0 })
+   mapping(state.listing_popup, "n")()
+   t.equal("3", page_arg(jobs[4]))
+   complete(jobs[4], { envelopes = {} })
+   t.equal(2, state.current_page)
+   t.equal({ "b1", "b2" }, ids())
+   t.equal({ "Zenvoy: this is the last page" }, notices)
+   t.equal(2, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
+
+   mapping(state.listing_popup, "N")()
+   t.equal(nil, page_arg(jobs[5]))
+   complete(jobs[5], { envelopes = emails("a", 2) })
+   t.equal(1, state.current_page)
+   t.equal({ "a1", "a2" }, ids())
+   t.equal(1, vim.api.nvim_win_get_cursor(state.listing_popup.winid)[1])
+   mapping(state.listing_popup, "N")()
+   t.equal(5, #jobs)
+   t.equal("Zenvoy: this is the first page", notices[2])
+end)
+
+t.test("a short page is the last, n then N stays, and N twice goes back two pages", function()
+   open_pages()
+   mapping(state.listing_popup, "n")()
+   mapping(state.listing_popup, "N")()
+   t.equal(1, jobs[3].kills)
+   t.equal(3, #jobs)
+   t.equal(1, state.current_page)
+   assert(not footer():find("Loading", 1, true), footer())
+
+   mapping(state.listing_popup, "n")()
+   mapping(state.listing_popup, "n")() -- Page 3 waits for page 2.
+   t.equal(4, #jobs)
+   complete(jobs[4], { envelopes = emails("b", 2) })
+   mapping(state.listing_popup, "n")()
+   complete(jobs[5], { envelopes = emails("c", 1) })
+   t.equal(3, state.current_page)
+   mapping(state.listing_popup, "n")()
+   t.equal(5, #jobs)
+   t.equal({ "Zenvoy: this is the last page" }, notices)
+
+   mapping(state.listing_popup, "N")()
+   mapping(state.listing_popup, "N")()
+   t.equal(1, jobs[6].kills)
+   t.equal(nil, page_arg(jobs[7]))
+   complete(jobs[6], { envelopes = emails("stale", 2) })
+   complete(jobs[7], { envelopes = emails("a", 2) })
+   t.equal(1, state.current_page)
+   t.equal({ "a1", "a2" }, ids())
+end)
+
+t.test("pages keep the folder and an open email; folders and opening an email cancel a page", function()
+   open_pages()
+   move(2)
+   flush(180)
+   complete(jobs[3], { envelopes = emails("archive", 2) })
+   mapping(state.sidebar_popup, "<CR>")()
+   mapping(state.listing_popup, "n")()
+   t.equal("native/archive", mailbox_arg(jobs[4]))
+   t.equal("2", page_arg(jobs[4]))
+   -- Another folder starts again at its first page.
+   move(3)
+   t.equal(1, jobs[4].kills)
+   t.equal(1, state.current_page)
+   assert(title():find("Page 1", 1, true), title())
+   flush(180)
+   complete(jobs[5], { envelopes = emails("sent", 2) })
+
+   mapping(state.sidebar_popup, "<CR>")()
+   mapping(state.listing_popup, "n")()
+   mapping(state.listing_popup, "<CR>")()
+   t.equal(1, jobs[6].kills)
+   t.equal("sent1", jobs[7].command[#jobs[7].command])
+   complete(jobs[7], table.concat(vim.fn.readfile("tests/fixtures/messages/plain.json"), "\n"))
+   t.equal(1, state.current_page)
+
+   -- The email stays open below the list while the list changes page.
+   vim.api.nvim_set_current_win(state.listing_popup.winid)
+   mapping(state.listing_popup, "n")()
+   complete(jobs[8], { envelopes = emails("older", 2) })
+   t.equal(2, state.current_page)
+   t.equal(true, state.email_visible)
+   t.equal("sent1", state.open_envelope.id)
+end)
+
+t.test("a failed page keeps the shown one, and page keys stay in the email list", function()
+   open_pages()
+   mapping(state.listing_popup, "n")()
+   complete(jobs[3], "", 1)
+   t.equal(1, state.current_page)
+   t.equal({ "a1", "a2" }, ids())
+   assert(notices[1]:find("mailbox unavailable", 1, true), notices[1])
+   assert(not footer():find("Loading", 1, true), footer())
+   for _, popup in ipairs({ state.sidebar_popup, state.email_popup }) do
+      t.equal(false, pcall(mapping, popup, "n"))
+      t.equal(false, pcall(mapping, popup, "N"))
+   end
+   t.equal(false, pcall(mapping, state.listing_popup, "<C-N>"))
 end)
 
 app.close()

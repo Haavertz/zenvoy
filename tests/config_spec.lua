@@ -4,7 +4,7 @@ local t = dofile("tests/helpers.lua")
 local config = require("zenvoy.config")
 
 t.test("provides Himalaya defaults and resets user options on setup", function()
-   t.equal({ executable = "himalaya", timeout = 30000, page_size = 50 }, config.get().himalaya)
+   t.equal({ executable = "himalaya", timeout = 30000, page_size = 40 }, config.get().himalaya)
    config.setup({ himalaya = { executable = "/custom/himalaya", page_size = 10 } })
    t.equal({ executable = "/custom/himalaya", timeout = 30000, page_size = 10 }, config.get().himalaya)
    config.setup()

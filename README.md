@@ -58,6 +58,7 @@ are used when it starts.
 | `j` / `k` in the sidebar | Select a mailbox and load its emails |
 | `Enter` in the sidebar | Focus the email list; retry a failed mailbox load |
 | `Enter` on an email | Read it below the list and mark it as seen |
+| `n` / `N` in the email list | Show the next / previous page of emails |
 | `q` | Return from the message pane, then close Zenvoy |
 | `?` | Show all keybindings |
 
@@ -82,8 +83,8 @@ editing**, has the focus first, so `Enter` alone never sends or discards.
 
 An email opens below the list. Press `z` to show it over the whole Zenvoy
 window, where the bottom border shows **Loading email** while it loads, and `z`
-again to bring back the folders and the list. The next email opens below the
-list again, and `q` returns to the list on the email that was open. In the
+again (or `s`) to bring back the folders and the list. The next email opens
+below the list again, and `q` returns to the list on the email that was open. In the
 message pane `z` acts at once, so Vim's `z` commands (`zo`, `zz`) are not
 available there.
 
@@ -169,7 +170,9 @@ changed text. A draft is held in memory only, and reopening the composer focuses
 the existing draft.
 
 Mailbox changes load the first page after a 150 ms pause, using the configured
-page size (50 by default). Loading, downloading and sending activity appears at
+page size (40 by default). The list's title shows the page, such as
+**Emails (40) · Page 2**. The shown page stays until the next one arrives, and
+an open email stays open. Loading, downloading and sending activity appears at
 the bottom of the sidebar. Replies preserve the email thread, prefer Reply-To,
 and exclude your own address from reply-all. The configured Himalaya signature
 is appended once when the final message is built. Messages with attachments get
@@ -191,7 +194,7 @@ Default main-view shortcuts can be changed or disabled:
 
 ```lua
 require("zenvoy").setup({
-    himalaya = { page_size = 50 },
+    himalaya = { page_size = 40 },
     reader = {
         prefer = "html",    -- or "plain" to open the text/plain version first
         max_width = 100,    -- wrap formatted email at this width; 0 uses the whole pane
@@ -213,7 +216,8 @@ require("zenvoy").setup({
 
 Message-pane actions can be remapped the same way: `toggle_fullscreen` (`z`),
 `open_link`, `save_attachment`, `show_image`, `toggle_view`, `next_item` and
-`previous_item`; `help` (`?`) works in every pane. The `?` window lists the keys
+`previous_item`; `next_page` (`n`) and `previous_page` (`N`) act in the email
+list, and `help` (`?`) works in every pane. The `?` window lists the keys
 as configured. The default highlight groups (`ZenvoyLink`, `ZenvoyQuote`,
 `ZenvoyHeading`, `ZenvoyAttachment`, `ZenvoyLabel`, `ZenvoyMuted`,
 `ZenvoyButton`, `ZenvoyButtonActive`, `ZenvoyKey` and others) link to standard

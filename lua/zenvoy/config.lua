@@ -2,7 +2,7 @@ local defaults = {
    himalaya = {
       executable = "himalaya",
       timeout = 30000,
-      page_size = 50,
+      page_size = 40,
    },
    sidebar = {
       width = 30,
@@ -35,6 +35,8 @@ local defaults = {
       ["<Tab>"] = "next_item",
       ["<S-Tab>"] = "previous_item",
       ["z"] = "toggle_fullscreen",
+      ["n"] = "next_page",
+      ["N"] = "previous_page",
       ["?"] = "help",
       ["<CR>"] = "enter",
    },

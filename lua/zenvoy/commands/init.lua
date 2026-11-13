@@ -28,6 +28,8 @@ function M.create(context)
       next_item = email_commands.next_item,
       previous_item = email_commands.previous_item,
       focus_sidebar = session_commands.focus_sidebar,
+      next_page = session_commands.next_page,
+      previous_page = session_commands.previous_page,
    }
 end
 

@@ -160,7 +160,7 @@ test("z shows the opened email over the whole window and back; every email opens
    assert_equal("split-box", layout.updates[6], "the next email opens below the list")
 end)
 
-test("s from an email over the whole window goes back to the list before focusing folders", function()
+test("s from an email over the whole window shows the folders again and focuses them", function()
    local context, state, _, observed = create_context()
    local focused = {}
    context.focus = function(popup) focused[#focused + 1] = popup; observed.focused_popup = popup end
@@ -172,7 +172,8 @@ test("s from an email over the whole window goes back to the list before focusin
 
    commands.toggle_fullscreen()
    commands.focus_sidebar()
-   assert_equal(false, state.email_visible, "email closed")
+   assert_equal(false, state.email_fullscreen, "the email goes back below the list")
+   assert_equal(true, state.email_visible, "the email stays open")
    assert_equal(state.sidebar_popup, focused[#focused], "folders focused")
 end)
 
@@ -182,6 +183,16 @@ test("? asks the UI for the keybindings", function()
    context.on_help = function() opened = opened + 1 end
    load_commands(context).help()
    assert_equal(1, opened, "help opened")
+end)
+
+test("n and N ask the UI for the next and previous page", function()
+   local context = create_context()
+   local steps = {}
+   context.on_page = function(step) steps[#steps + 1] = step end
+   local commands = load_commands(context)
+   commands.next_page()
+   commands.previous_page()
+   assert(vim.deep_equal({ 1, -1 }, steps), vim.inspect(steps))
 end)
 
 test("dispatches composition and replies with the selected message and mailbox", function()

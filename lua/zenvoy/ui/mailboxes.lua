@@ -1,4 +1,5 @@
--- Owns debounced mailbox requests. Rendering and backend operations are injected.
+-- Owns debounced mailbox requests and page changes. Rendering and backend operations
+-- are injected.
 local Mailboxes = {}
 Mailboxes.__index = Mailboxes
 
@@ -35,12 +36,40 @@ function Mailboxes:dispatch(pending)
    local function receive(err, records)
       if self.pending ~= pending then return end
       self.pending = nil
-      self.status = err and "failed" or "ready"
       pending.finish()
+      if pending.page then
+         -- The selected mailbox stays loaded whatever happens to one of its pages.
+         self.options.on_page(pending.page, err, records)
+         return
+      end
+      self.status = err and "failed" or "ready"
       if err then self.options.on_error(err) else self.options.on_result(records) end
    end
-   local ok, request = pcall(self.options.load, pending.mailbox, receive)
+   local ok, request = pcall(self.options.load, pending.mailbox, receive, pending.page)
    if ok then pending.request = request else receive(tostring(request)) end
+end
+
+---Load another page of the shown mailbox (nil is Himalaya's inbox), replacing a page
+---change still loading. The shown emails stay until the page arrives.
+---@param mailbox string?
+---@param page integer
+function Mailboxes:page(mailbox, page)
+   self:cancel()
+   local pending = { mailbox = mailbox, page = page, finish = self.options.activity("Loading page " .. page) }
+   self.pending = pending
+   self:dispatch(pending)
+end
+
+---The page being loaded: nil when idle, false while a whole mailbox loads.
+---@return integer|false|nil
+function Mailboxes:loading_page()
+   local pending = self.pending
+   if not pending then return nil end
+   return pending.page or false
+end
+
+function Mailboxes:cancel_page()
+   if self.pending and self.pending.page then self:cancel() end
 end
 
 function Mailboxes:select(mailbox, options)
