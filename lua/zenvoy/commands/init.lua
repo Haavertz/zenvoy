@@ -13,11 +13,18 @@ function M.create(context)
       close = session_commands.close,
       close_or_back = session_commands.close_or_back,
       enter = session_commands.enter,
+      show_image = session_commands.show_image,
       show_email = email_commands.show_email,
       hide_email = email_commands.hide_email,
       compose = email_commands.compose,
       reply = email_commands.reply,
       reply_all = email_commands.reply_all,
+      forward = email_commands.forward,
+      open_link = email_commands.open_link,
+      save_attachment = email_commands.save_attachment,
+      toggle_view = email_commands.toggle_view,
+      next_item = email_commands.next_item,
+      previous_item = email_commands.previous_item,
       focus_sidebar = session_commands.focus_sidebar,
    }
 end

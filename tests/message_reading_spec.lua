@@ -1,6 +1,8 @@
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
 
 local t = dofile("tests/helpers.lua")
+-- Wide enough that headers do not wrap.
+vim.o.columns, vim.o.lines = 220, 50
 local jobs, notifications = {}, {}
 vim.system = function(command, options, callback)
    local job = { command = command, options = options, exit = callback, kills = 0 }
@@ -73,15 +75,25 @@ t.test("Enter reads the selected row and displays subject, addresses and body", 
    assert(sidebar_footer():find("Loading email", 1, true), sidebar_footer())
    assert(not content():find("Loading email", 1, true), content())
    assert(not content():find("No message content", 1, true), "pending messages must not appear empty")
-   assert(content():find("Subject: Second email", 1, true), content())
-   complete(jobs[3], fixture("multipart"))
+   assert(content():find("Subject:  Second email", 1, true), content())
+   local value = vim.json.decode(fixture("multipart"))
+   value.parts[3].body.Html = "<p>Olá, <b>Bob</b>!</p><p>Formatted <a href='https://example.com/x'>version</a></p>"
+   complete(jobs[3], vim.json.encode(value))
    assert(not sidebar_footer():find("Loading", 1, true), sidebar_footer())
    local lines = content()
-   for _, text in ipairs({ "Subject: Olá", "From: Alice <alice@example.com>",
-      "To: Bob <bob@example.com>, Carol <carol@example.com>",
-      "Cc: Dan <dan@example.com>, Eve <eve@example.com>", "Olá, Bob!\nSecond line." }) do
+   for _, text in ipairs({ "Subject:  Olá", "From:     Alice <alice@example.com>",
+      "To:       Bob <bob@example.com>, Carol <carol@example.com>",
+      "Cc:       Dan <dan@example.com>, Eve <eve@example.com>", "Date:     ",
+      "Olá, Bob!\n\nFormatted version" }) do
       assert(lines:find(text, 1, true), lines)
    end
+   -- The HTML alternative is the default view; T switches to the text/plain part.
+   mapping(state.email_popup, "T")()
+   lines = content()
+   assert(lines:find("Olá, Bob!\nSecond line.", 1, true), lines)
+   assert(not lines:find("Formatted version", 1, true), lines)
+   mapping(state.email_popup, "T")()
+   assert(content():find("Formatted version", 1, true), content())
    local border = table.concat(vim.api.nvim_buf_get_lines(state.email_popup.border.bufnr, 0, -1, false))
    assert(border:find("Olá", 1, true), border)
    t.equal(false, vim.bo[state.email_popup.bufnr].modifiable)
@@ -94,12 +106,16 @@ t.test("messages with custom transport headers and nested MIME reach the reader"
    select(1)
    complete(jobs[3], fixture("nested"))
    local lines = content()
-   assert(lines:find("Subject: Nested MIME with encoded content", 1, true), lines)
-   assert(lines:find("From: Alice <alice@example.test>", 1, true), lines)
-   assert(lines:find("To: Bob <bob@example.test>", 1, true), lines)
-   assert(lines:find("Olá, Bob!\nDecoded base64 body.", 1, true), lines)
+   assert(lines:find("Subject:  Nested MIME with encoded content", 1, true), lines)
+   assert(lines:find("From:     Alice <alice@example.test>", 1, true), lines)
+   assert(lines:find("To:       Bob <bob@example.test>", 1, true), lines)
+   assert(lines:find("Olá, Bob!\n\nHTML alternative\n\n[Image: Test logo]", 1, true), lines)
+   -- The inline logo is shown in place; only the real attachment is listed.
+   assert(lines:find("1 attachment\n  sample.bin  BIN · 50 B", 1, true), lines)
    assert(not lines:find("Unable to load", 1, true), lines)
    t.equal(0, #notifications)
+   mapping(state.email_popup, "T")()
+   assert(content():find("Olá, Bob!\nDecoded base64 body.", 1, true), content())
 end)
 
 t.test("clicking an email opens the clicked row rather than the previous cursor row", function()
@@ -219,8 +235,8 @@ t.test("header line breaks are flattened and body line breaks are preserved", fu
    value.parts[1].headers[1].value.Address.List[1].name = "Alice\r\nSmith"
    value.parts[1].body.Text = "First line\r\n\r\nSecond line"
    complete(jobs[3], vim.json.encode(value))
-   assert(content():find("Subject: A subject with a newline", 1, true), content())
-   assert(content():find("From: Alice  Smith <alice@example.com>", 1, true), content())
+   assert(content():find("Subject:  A subject with a newline", 1, true), content())
+   assert(content():find("From:     Alice Smith <alice@example.com>", 1, true), content())
    assert(content():find("First line\n\nSecond line", 1, true), content())
 end)
 

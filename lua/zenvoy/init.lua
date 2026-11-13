@@ -37,9 +37,15 @@ function M.open()
    layout.set_mailbox_loader(function(mailbox, callback)
       return client:list_envelopes(callback, mailbox)
    end)
+   layout.set_attachment_downloader(function(id, mailbox, ids, directory, callback)
+      return client:download_attachments(id, mailbox, ids, directory, callback)
+   end)
    layout.set_composer({
       prepare_reply = function(id, mailbox, all, callback)
          return client:prepare_reply(id, mailbox, all, callback)
+      end,
+      prepare_forward = function(id, mailbox, callback)
+         return client:prepare_forward(id, mailbox, callback)
       end,
       send = function(draft, callback)
          return client:send_message(draft, callback)

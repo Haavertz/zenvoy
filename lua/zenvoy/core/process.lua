@@ -37,12 +37,13 @@ end
 ---Run argv directly. Callbacks always run on Neovim's main loop, including spawn errors.
 ---@param command string[]
 ---@param callback fun(err: string?, output: string?)
----@param options? { stdin?: string }
+---@param options? { stdin?: string, timeout?: integer } `timeout` overrides the instance default.
 ---@return ZenvoyRequest
 function Process:run(command, callback, options)
    local finished, cancelled = false, false
    local job
    local request = {}
+   local timeout = options and options.timeout or self.timeout
 
    function request:cancel()
       if finished or cancelled then return end
@@ -56,14 +57,14 @@ function Process:run(command, callback, options)
          if finished or cancelled then return end
          finished = true
          if result.code ~= 0 or (result.signal and result.signal ~= 0) then
-            callback(failure_message(result, self.timeout))
+            callback(failure_message(result, timeout))
          else
             callback(nil, result.stdout or "")
          end
       end)
    end
 
-   local system_options = { text = true, timeout = self.timeout }
+   local system_options = { text = true, timeout = timeout }
    if options then system_options.stdin = options.stdin end
    local ok, result = pcall(self.system, command, system_options, on_exit)
    if ok then

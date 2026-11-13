@@ -26,7 +26,7 @@ t.test("prepares an editable quote and sender reply with native threading", func
    t.equal("", draft.cc)
    t.equal("", draft.bcc)
    t.equal("Re: Olá", draft.subject)
-   t.equal("\n\n> Original first line\n> second line", draft.body)
+   t.equal("\n\nalice@example.com wrote:\n> Original first line\n> second line", draft.body)
    t.equal("<original@example.com>", draft.reply_context.in_reply_to)
    t.equal("<older@example.com> <original@example.com>", draft.reply_context.references)
    t.equal("=?utf-8?Q?Bob?= <bob@example.com>", draft.reply_context.from)
@@ -110,6 +110,50 @@ t.test("adds only captured identity and threading while retaining compiled MIME 
    assert(not final:find("Cc:", 1, true))
    assert(final:sub(-#"Edited=20body\r\n") == "Edited=20body\r\n")
    t.equal(raw, assert(Draft.apply_context(raw)))
+end)
+
+t.test("reply attribution names the sender and the original date", function()
+   local original = source()
+   original.from = { { name = "Alice Doe", email = "alice@example.com" } }
+   original.date = 1788782400
+   local draft = assert(Draft.reply(original, preview))
+   local attribution = draft.body:match("^\n\n(On .-, Alice Doe <alice@example.com> wrote:)\n> Original first line")
+   assert(attribution, draft.body)
+   assert(attribution:find(require("zenvoy.utils.date").format_long(1788782400), 1, true), attribution)
+   original.body = ""
+   t.equal("", assert(Draft.reply(original, preview)).body)
+end)
+
+t.test("attachments must be existing absolute files", function()
+   local file = vim.fn.tempname() .. "-zenvoy-draft.txt"
+   vim.fn.writefile({ "content" }, file)
+   t.equal({ file }, assert(Draft.validate({ to = "a@example.com", attachments = { file } })).attachments)
+   t.equal({}, assert(Draft.validate({ to = "a@example.com" })).attachments)
+   for _, invalid in ipairs({ "relative.txt", file .. ".missing", vim.fn.fnamemodify(file, ":h"), file .. "\n" }) do
+      local result, err = Draft.validate({ to = "a@example.com", attachments = { invalid } })
+      assert(result == nil and err, invalid)
+   end
+   assert(not Draft.validate({ to = "a@example.com", attachments = file }))
+   vim.fn.delete(file)
+end)
+
+t.test("forward quotes the original headers and body and carries attachments", function()
+   local original = source()
+   original.from = { { name = "Alice", email = "alice@example.com" } }
+   original.subject = "Olá\nworld"
+   original.date = 1788782400
+   local draft = assert(Draft.forward(original, { "/tmp/report.pdf" }))
+   t.equal("Fwd: Olá world", draft.subject)
+   t.equal({ "/tmp/report.pdf" }, draft.attachments)
+   t.equal("", draft.to)
+   t.equal(nil, draft.reply_context)
+   assert(draft.body:find("^\n\n%-%-%-%-%-%-%-%-%-%- Forwarded message %-%-%-%-%-%-%-%-%-\nFrom: Alice <alice@example.com>\nDate: "),
+      draft.body)
+   assert(draft.body:find("Subject: Olá world\nTo: BOB@example.com, carol@example.com\nCc: CAROL@example.com, "
+      .. "dave@example.com, bob@example.com\n\nOriginal first line\nsecond line$"), draft.body)
+   original.subject = "FW: already forwarded"
+   t.equal("FW: already forwarded", assert(Draft.forward(original)).subject)
+   assert(not Draft.forward(original, { "relative.pdf" }))
 end)
 
 t.finish("draft_spec")

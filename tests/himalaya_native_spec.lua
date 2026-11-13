@@ -43,14 +43,21 @@ vim.fn.writefile(original, maildir .. "/cur/original:2,")
 
 local sent_raw, native_calls = nil, {}
 local process = Process.new({ system = function(argv, options, callback)
-   assert(argv[1] == "himalaya" and argv[2] == "message", "Native smoke only permits message operations")
-   if argv[3] == "send" then
+   assert(argv[1] == "himalaya" and (argv[2] == "message" or argv[2] == "attachment"),
+      "Native smoke only permits message and attachment operations")
+   if argv[2] == "attachment" then
+      assert(argv[3] == "download", "Disallowed attachment operation")
+      local directory
+      for _, value in ipairs(argv) do directory = directory or value:match("^%-%-dir=(.+)$") end
+      assert(directory and directory:sub(1, #temporary + 1) == temporary .. "/", "Downloads must stay synthetic")
+   elseif argv[3] == "send" then
       sent_raw = options.stdin
       -- Delivery is intentionally mocked; no real send subprocess is launched.
       callback({ code = 0, stdout = '{"message":"synthetic send intercepted"}', stderr = "" })
       return { kill = function() end }
    end
-   assert(vim.tbl_contains({ "read", "reply", "compose" }, argv[3]), "Disallowed native operation")
+   assert(argv[2] == "attachment" or vim.tbl_contains({ "read", "reply", "compose" }, argv[3]),
+      "Disallowed native operation")
    assert(not vim.tbl_contains(argv, "--send") and not vim.tbl_contains(argv, "--save"), "Disallowed write flag")
    local command = { "himalaya", "--config", config, "--account", "zenvoy_test", "--backend", "maildir" }
    vim.list_extend(command, vim.list_slice(argv, 2))
@@ -123,6 +130,35 @@ t.test("native seen reads update the synthetic Maildir flag while preserving the
    t.equal(first.subject, second.subject)
    t.equal(first.body, second.body)
    t.equal(paths, vim.fn.glob(maildir .. "/cur/original:2,*", false, true))
+end)
+
+t.test("native attachments are composed, listed with part IDs, downloaded and forwarded", function()
+   local files = { temporary .. "/relatório, final.pdf", temporary .. "/notes.txt" }
+   vim.fn.writefile({ "%PDF-1.4 synthetic" }, files[1])
+   vim.fn.writefile({ "plain notes" }, files[2])
+   await_call(function(callback)
+      client:send_message({ to = "jane@example.com", subject = "Files", body = "See attached.", attachments = files },
+         callback)
+   end)
+   assert(sent_raw:find("multipart/mixed", 1, true), sent_raw)
+   local decoded = persist_compiled()
+   t.equal("See attached.\n\n-- \nZenvoySyntheticSignature", vim.trim(decoded.body))
+   t.equal(2, #decoded.attachments)
+   t.equal("relatório, final.pdf", decoded.attachments[1].name)
+   t.equal("notes.txt", decoded.attachments[2].name)
+
+   local downloads = await_call(function(callback)
+      client:download_attachments("compiled", nil, { decoded.attachments[1].id }, temporary .. "/downloads", callback)
+   end)
+   t.equal(1, #downloads)
+   t.equal(vim.fn.readfile(files[1]), vim.fn.readfile(downloads[1].path))
+
+   local forwarding = Client.new(process, { temporary_directory = function() return temporary .. "/forward" end })
+   local draft = await_call(function(callback) forwarding:prepare_forward("compiled", nil, callback) end)
+   t.equal("Fwd: Files", draft.subject)
+   t.equal(2, #draft.attachments)
+   t.equal(vim.fn.readfile(files[2]), vim.fn.readfile(draft.attachments[2]))
+   assert(draft.body:find("Forwarded message", 1, true))
 end)
 
 -- Only delete the generated test directory, never an account path or user data.

@@ -11,7 +11,7 @@ end
 local function make()
    for _, controller in ipairs(controllers) do controller:detach() end
    flush()
-   local observed = { choices = {}, sends = {}, preparations = {}, activities = {}, notices = {} }
+   local observed = { choices = {}, sends = {}, preparations = {}, activities = {}, notices = {}, inputs = {} }
    local controller = Composer.new({
       choose = function(items, options, callback)
          observed.choices[#observed.choices + 1] = { items = items, options = options, callback = callback }
@@ -27,6 +27,15 @@ local function make()
          function request:cancel() self.cancelled = true end
          observed.preparations[#observed.preparations + 1] = request
          return request
+      end,
+      prepare_forward = function(id, mailbox, callback)
+         local request = { id = id, mailbox = mailbox, forward = true, callback = callback, cancelled = false }
+         function request:cancel() self.cancelled = true end
+         observed.preparations[#observed.preparations + 1] = request
+         return request
+      end,
+      input = function(options, callback)
+         observed.inputs[#observed.inputs + 1] = { options = options, callback = callback }
       end,
       activity = function(label)
          local item = { label = label, finishes = 0 }
@@ -58,7 +67,7 @@ local function send(controller, observed)
    observed.choices[#observed.choices].callback("Send")
 end
 
-t.test("new composer has five scratch fields, semantic navigation, and restores focus", function()
+t.test("new composer has six scratch fields, semantic navigation, and restores focus", function()
    local controller, observed = make()
    local previous = vim.api.nvim_get_current_win()
    controller:open()
@@ -66,7 +75,7 @@ t.test("new composer has five scratch fields, semantic navigation, and restores 
    local session = controller.session
    t.equal(true, controller:is_open())
    t.equal(session.fields.to.winid, vim.api.nvim_get_current_win())
-   for _, name in ipairs({ "to", "cc", "bcc", "subject", "body" }) do
+   for _, name in ipairs({ "to", "cc", "bcc", "subject", "body", "attachments" }) do
       local popup = session.fields[name]
       t.equal(false, vim.bo[popup.bufnr].swapfile)
       t.equal(false, vim.bo[popup.bufnr].undofile)
@@ -76,6 +85,7 @@ t.test("new composer has five scratch fields, semantic navigation, and restores 
          assert(map(session, name, mode, "<Tab>"), "missing Tab on " .. name .. "/" .. mode)
          assert(map(session, name, mode, "<S-Tab>"), "missing reverse Tab")
          assert(map(session, name, mode, "<C-S>"), "missing send")
+         assert(map(session, name, mode, "<C-A>"), "missing attach")
       end
       for _, key in ipairs({ "c", "r", "s" }) do t.equal(nil, map(session, name, "n", key)) end
       t.equal(nil, map(session, name, "i", "<Esc>"))
@@ -85,8 +95,12 @@ t.test("new composer has five scratch fields, semantic navigation, and restores 
    map(session, "cc", "n", "<S-Tab>")()
    t.equal(session.fields.to.winid, vim.api.nvim_get_current_win())
    map(session, "to", "n", "<S-Tab>")()
+   t.equal(session.fields.attachments.winid, vim.api.nvim_get_current_win())
+   map(session, "attachments", "n", "<S-Tab>")()
    t.equal(session.fields.body.winid, vim.api.nvim_get_current_win())
    map(session, "body", "n", "<Tab>")()
+   t.equal(session.fields.attachments.winid, vim.api.nvim_get_current_win())
+   map(session, "attachments", "n", "<Tab>")()
    t.equal(session.fields.to.winid, vim.api.nvim_get_current_win())
    controller:open()
    t.equal(session, controller.session)
@@ -321,5 +335,84 @@ t.test("synchronous preparation and delivery exceptions release their activity",
    assert(observed.notices[2]:find("send spawn failed", 1, true))
 end)
 
+local directory = vim.fn.tempname() .. "-zenvoy-composer"
+vim.fn.mkdir(directory, "p")
+local first, second = directory .. "/first.txt", directory .. "/second file.pdf"
+vim.fn.writefile({ "1234" }, first)
+vim.fn.writefile({ "123456789" }, second)
+
+local function extmarks(session)
+   local result = {}
+   local bufnr = session.fields.attachments.bufnr
+   for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, -1, 0, -1, { details = true })) do
+      result[#result + 1] = mark[4].virt_text and mark[4].virt_text[1][1] or "conceal"
+   end
+   return result
+end
+
+t.test("Ctrl-a adds resolved files with sizes, ignores duplicates and reports errors", function()
+   local controller, observed = make()
+   controller:open()
+   local session = controller.session
+   t.equal({ "C-a attach a file, or type one path per line" }, extmarks(session))
+   vim.api.nvim_set_current_win(session.fields.subject.winid)
+   map(session, "subject", "i", "<C-A>")()
+   t.equal("file", observed.inputs[1].options.completion)
+   observed.inputs[1].callback(first)
+   flush()
+   t.equal(first, value(session, "attachments"))
+   t.equal(session.fields.subject.winid, vim.api.nvim_get_current_win())
+   map(session, "body", "n", "<C-A>")()
+   t.equal(directory .. "/", observed.inputs[2].options.default)
+   observed.inputs[2].callback(second)
+   map(session, "body", "n", "<C-A>")()
+   observed.inputs[3].callback(first)
+   map(session, "body", "n", "<C-A>")()
+   observed.inputs[4].callback(directory .. "/missing.txt")
+   t.equal(first .. "\n" .. second, value(session, "attachments"))
+   t.equal({ "  5 B", "conceal", "  10 B", "conceal" }, extmarks(session))
+   assert(observed.notices[1]:find("Attachment not found", 1, true))
+   flush()
+   -- The list grows to show both files (borders excluded).
+   t.equal(2, vim.api.nvim_win_get_height(session.fields.attachments.winid))
+end)
+
+t.test("invalid attachment lines block sending and valid ones reach the draft", function()
+   local controller, observed = make()
+   controller:open()
+   local session = controller.session
+   write(session, "to", "alice@example.test")
+   write(session, "attachments", first .. "\n\n" .. directory .. "/nope.pdf")
+   map(session, "body", "n", "<C-S>")()
+   t.equal(0, #observed.choices)
+   assert(observed.notices[1]:find("nope.pdf", 1, true))
+   write(session, "attachments", '"' .. first .. '"\n' .. second)
+   map(session, "body", "n", "<C-S>")()
+   t.equal("Send this email with 2 attachments (15 B)?", observed.choices[1].options.prompt)
+   observed.choices[1].callback("Send")
+   t.equal({ first, second }, observed.sends[1].draft.attachments)
+end)
+
+t.test("forward preparation fills the attachments and focuses the recipients", function()
+   local controller, observed = make()
+   controller:open({ id = "native/id", mailbox = "Inbox", forward = true })
+   local request = observed.preparations[1]
+   t.equal(true, request.forward)
+   t.equal("Preparing forward", observed.activities[1].label)
+   request.callback(nil, { to = "", subject = "Fwd: Hello", body = "\n\n---------- Forwarded message ---------",
+      attachments = { first, second } })
+   flush()
+   local session = controller.session
+   t.equal(first .. "\n" .. second, value(session, "attachments"))
+   t.equal("Fwd: Hello", value(session, "subject"))
+   t.equal(session.fields.to.winid, vim.api.nvim_get_current_win())
+   -- An untouched forward closes without asking.
+   controller:request_close()
+   t.equal(false, controller:is_open())
+   t.equal(0, #observed.choices)
+end)
+
 for _, controller in ipairs(controllers) do controller:detach() end
+assert(directory:match("zenvoy%-composer$"))
+vim.fn.delete(directory, "rf")
 t.finish("composer_spec")

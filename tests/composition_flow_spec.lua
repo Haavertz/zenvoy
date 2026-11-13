@@ -139,5 +139,35 @@ t.test("API close protects changed drafts and external close lets dispatched del
    assert(notices[#notices]:find("sent", 1, true))
 end)
 
+t.test("f forwards the opened email with its original attachments", function()
+   open()
+   local directory = vim.fn.tempname() .. "-zenvoy-forward"
+   vim.fn.mkdir(directory, "p")
+   vim.fn.writefile({ "logo" }, directory .. "/logo.png")
+   vim.fn.writefile({ "data" }, directory .. "/sample.bin")
+   map(state.listing_popup.bufnr, "f")()
+   t.equal({ "himalaya", "message", "read", "--json", "--log-level", "off", "--", "original-id" }, jobs[3].command)
+   complete(jobs[3], table.concat(vim.fn.readfile("tests/fixtures/messages/nested.json"), "\n"))
+   t.equal("attachment", jobs[4].command[2])
+   assert(vim.tbl_contains(jobs[4].command, "6") and vim.tbl_contains(jobs[4].command, "7"))
+   complete(jobs[4], vim.json.encode({ attachments = {
+      { id = "6", size = 5, inline = true, path = directory .. "/logo.png" },
+      { id = "7", size = 5, inline = false, path = directory .. "/sample.bin" },
+   } }))
+   t.equal("Fwd: Nested MIME with encoded content", content("subject"))
+   t.equal(directory .. "/logo.png\n" .. directory .. "/sample.bin", content("attachments"))
+   assert(content("body"):find("Forwarded message", 1, true))
+   write("to", "dave@example.test")
+   confirm_send()
+   t.equal("compose", jobs[5].command[3])
+   assert(vim.tbl_contains(jobs[5].command, "--attach=" .. directory .. "/sample.bin"), vim.inspect(jobs[5].command))
+   complete(jobs[5], "From: Me <me@example.test>\r\nTo: dave@example.test\r\n\r\nmime")
+   t.equal("send", jobs[6].command[3])
+   complete(jobs[6], "")
+   t.equal(nil, field("body"))
+   assert(directory:match("zenvoy%-forward$"))
+   vim.fn.delete(directory, "rf")
+end)
+
 ui.close(true)
 t.finish("composition_flow_spec")

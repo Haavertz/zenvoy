@@ -39,6 +39,12 @@ local function is_mailbox(value)
       and type(value.id) == "string"
 end
 
+local function is_attachment(value)
+   return fields_match(value, {
+      id = "string", filename = "string", mime = "string", size = "number", inline = "boolean", path = "string",
+   }) and type(value.id) == "string"
+end
+
 local function is_envelope(value)
    return fields_match(value, {
       id = "string", subject = "string", date = "string", size = "number",
@@ -53,7 +59,7 @@ end
 ---Validate external JSON at the boundary, preserving backend IDs and optional fields.
 ---JSON null object fields become nil; null array entries remain invalid records.
 ---@param output string
----@param collection "mailboxes"|"envelopes"
+---@param collection "mailboxes"|"envelopes"|"attachments"
 ---@return table[]? records
 ---@return string? error
 function M.decode(output, collection)
@@ -64,7 +70,7 @@ function M.decode(output, collection)
       return nil, prefix .. "expected " .. collection .. " array"
    end
 
-   local valid_record = collection == "mailboxes" and is_mailbox or is_envelope
+   local valid_record = ({ mailboxes = is_mailbox, attachments = is_attachment })[collection] or is_envelope
    for index, record in ipairs(response[collection]) do
       if not valid_record(record) then
          return nil, prefix .. ("invalid record at index %d"):format(index)

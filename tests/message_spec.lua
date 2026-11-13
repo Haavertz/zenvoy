@@ -163,6 +163,50 @@ t.test("rejects malformed messages and invalid MIME references before rendering"
    end
 end)
 
+t.test("exposes the date, the HTML alternative and plain text separately", function()
+   local result = read(fixture("multipart"))
+   t.equal(1788782400, result.message.date) -- 2026-09-07 12:00 UTC
+   t.equal(true, result.message.has_html)
+   t.equal({ { text = "Olá, Bob!\nSecond line." } }, result.message.text_parts)
+   t.equal({ { html = "<p>Ol=C3=A1, Bob!</p>" } }, result.message.html_parts)
+   local plain = read(fixture("plain")).message
+   t.equal(false, plain.has_html)
+   t.equal(nil, plain.date)
+end)
+
+t.test("lists attachments with Himalaya part IDs, names, sizes and inline usage", function()
+   local value = vim.json.decode(fixture("nested"))
+   -- Content-Type's legacy name parameter is used when no disposition filename exists.
+   value.parts[7].headers[3] = nil
+   value.parts[7].headers[1].value.ContentType.attributes = { { name = "name", value = "legacy.bin" } }
+   local message = read(vim.json.encode(value)).message
+   t.equal({
+      { id = "6", name = "logo.png", mime = "image/png", size = 14, inline = true, cid = "logo", referenced = true },
+      { id = "7", name = "legacy.bin", mime = "application/octet-stream", size = 50, inline = false, referenced = false },
+   }, message.attachments)
+   t.equal("cid:logo", message.images[1].key)
+end)
+
+t.test("inline binary parts inside the body sequence render as images instead of failing", function()
+   -- Mail on iPhone sends multipart/mixed [text, image, text]; mail-parser lists the image in
+   -- text_body and html_body as InlineBinary.
+   local value = vim.json.decode(fixture("plain"))
+   value.parts[1].body = { Multipart = { 1, 2, 3 } }
+   value.parts[2] = { headers = {}, body = { Text = "Look at this:" } }
+   value.parts[3] = { headers = { { name = "content_type", value = { ContentType = {
+      c_type = "image", c_subtype = "png", attributes = { { name = "name", value = "photo.png" } } } } } },
+      body = { InlineBinary = { 137, 80, 78, 71 } } }
+   value.parts[4] = { headers = {}, body = { Text = "Sent from my iPhone" } }
+   value.text_body, value.html_body, value.attachments = { 1, 2, 3 }, { 1, 2, 3 }, { 2 }
+   local result = read(vim.json.encode(value))
+   t.equal(nil, result.err)
+   t.equal("Look at this:\n\nSent from my iPhone", result.message.body)
+   t.equal("photo.png", result.message.text_parts[2].image.name)
+   t.equal("part:3", result.message.text_parts[2].image.key)
+   t.equal({ { id = "3", name = "photo.png", mime = "image/png", size = 4, inline = false, referenced = false } },
+      result.message.attachments)
+end)
+
 t.test("reports contextual process failures", function()
    local result = read(nil, nil, nil, "message not found")
    assert(result.err:find("Read Himalaya message", 1, true))

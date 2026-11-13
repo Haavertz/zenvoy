@@ -38,6 +38,14 @@ t.test("uses each instance's timeout", function()
    t.equal(20, second.options.timeout)
 end)
 
+t.test("a call can extend the timeout for long transfers", function()
+   local result = fixture({ timeout = 10 }, { stdin = "data", timeout = 300000 })
+   t.equal({ text = true, timeout = 300000, stdin = "data" }, result.options)
+   result.exit({ code = 124 })
+   result.flush()
+   t.equal({ { err = "Process timed out after 300000 ms" } }, result.calls)
+end)
+
 t.test("passes literal multiline stdin without changing execution defaults", function()
    local body = "Olá, Bob!\n$(not a shell command)\n`literal`\n"
    local result = fixture(nil, { stdin = body })

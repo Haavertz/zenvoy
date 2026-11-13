@@ -55,6 +55,8 @@ function M.create(context, email_commands)
          context.focus(state.listing_popup)
       elseif state.listing_popup and current_buffer == state.listing_popup.bufnr then
          email_commands.show_email()
+      elseif state.email_popup and current_buffer == state.email_popup.bufnr and context.on_reader then
+         context.on_reader("activate")
       end
    end
 
@@ -63,6 +65,9 @@ function M.create(context, email_commands)
       close_or_back = close_or_back,
       enter = enter,
       focus_sidebar = focus_sidebar,
+      show_image = function()
+         if context.on_show_image then context.on_show_image() end
+      end,
    }
 end
 

@@ -1,3 +1,6 @@
+local attachments = require("zenvoy.core.attachments")
+local date = require("zenvoy.utils.date")
+local uv = vim.uv or vim.loop
 local M = {}
 
 ---@class ZenvoyDraft
@@ -6,6 +9,7 @@ local M = {}
 ---@field bcc string
 ---@field subject string
 ---@field body string The complete editable text, including any original quotation.
+---@field attachments? string[] Absolute paths of files to attach.
 ---@field reply_context? { from: string, in_reply_to?: string, references?: string, id?: string, mailbox?: string }
 
 local function header_value(value, name)
@@ -114,10 +118,43 @@ function M.validate(draft)
       normalized.body = optional_text(draft.body)
       assert(type(normalized.body) == "string" and not normalized.body:find("%z"), "Body must be text without NUL bytes")
       if draft.reply_context ~= nil then context(draft.reply_context) end
+      local files = draft.attachments == nil and {} or draft.attachments
+      assert(type(files) == "table" and vim.islist(files), "Attachments must be a list of file paths")
+      normalized.attachments = {}
+      for _, path in ipairs(files) do
+         assert(type(path) == "string" and path ~= "" and not path:find("%c"), "Invalid attachment path")
+         assert(attachments.is_absolute(path), "Attachment paths must be absolute: " .. path)
+         local stat = uv.fs_stat(path)
+         assert(stat and stat.type == "file", "Attachment not found: " .. path)
+         normalized.attachments[#normalized.attachments + 1] = path
+      end
       return normalized
    end)
    if not ok then return nil, "Invalid draft: " .. tostring(result) end
    return result
+end
+
+local function format_address(address)
+   if type(address) ~= "table" then return nil end
+   local name = type(address.name) == "string" and vim.trim(address.name:gsub("%c", " ")) or ""
+   local email = type(address.email) == "string" and vim.trim(address.email:gsub("%c", " ")) or ""
+   if name ~= "" and email ~= "" and name ~= email then return name .. " <" .. email .. ">" end
+   if name ~= "" then return name end
+   if email ~= "" then return email end
+end
+
+local function format_addresses(list)
+   local result = {}
+   for _, address in ipairs(list or {}) do result[#result + 1] = format_address(address) end
+   return table.concat(result, ", ")
+end
+
+local function normalize_body(text)
+   return ((text or ""):gsub("\r\n", "\n"):gsub("\r", "\n"):gsub("\n+$", ""))
+end
+
+local function single_line_subject(subject)
+   return vim.trim((subject or ""):gsub("%c", " "))
 end
 
 ---@param message ZenvoyMessage
@@ -154,16 +191,59 @@ function M.reply(message, preview, reply_all)
       -- Replying to your own sent mail continues with the original recipients.
       if reply_all or #to == 0 then append(to, message.to) end
       if reply_all then append(cc, message.cc) end
-      local subject = message.subject or ""
+      local subject = single_line_subject(message.subject)
       if not subject:lower():match("^%s*re:") then subject = "Re: " .. subject end
-      local body = (message.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n"):gsub("\n+$", "")
-      if body ~= "" then body = "\n\n> " .. body:gsub("\n", "\n> ") end
+      local body = normalize_body(message.body)
+      if body ~= "" then
+         -- Attribution in the style of webmail clients: "On <date>, <sender> wrote:".
+         local sender = format_address(message.from and message.from[1])
+         local attribution = sender and (sender .. " wrote:") or nil
+         if attribution and type(message.date) == "number" then
+            attribution = ("On %s, %s"):format(date.format_long(message.date), attribution)
+         end
+         body = "\n\n" .. (attribution and (attribution .. "\n") or "") .. "> " .. body:gsub("\n", "\n> ")
+      end
       return {
          to = table.concat(to, ", "), cc = table.concat(cc, ", "), bcc = "",
          subject = subject, body = body, reply_context = reply_context,
       }
    end)
    if not ok then return nil, "Invalid Himalaya reply: " .. tostring(result) end
+   return result
+end
+
+---Prepare an inline forward: the original headers and text, plus files to re-attach.
+---@param message ZenvoyMessage
+---@param files? string[] Paths of the original attachments, already downloaded.
+---@return ZenvoyDraft? draft
+---@return string? error
+function M.forward(message, files)
+   local ok, result = pcall(function()
+      assert(type(message) == "table", "Invalid source message")
+      files = files or {}
+      assert(type(files) == "table" and vim.islist(files), "Forwarded attachments must be a list")
+      for _, path in ipairs(files) do
+         assert(type(path) == "string" and attachments.is_absolute(path), "Invalid forwarded attachment path")
+      end
+      local original_subject = single_line_subject(message.subject)
+      local subject = original_subject
+      if not subject:lower():match("^%s*fwd?:") then subject = "Fwd: " .. subject end
+      local lines = { "", "", "---------- Forwarded message ---------" }
+      local function add(label, value)
+         if value and value ~= "" then lines[#lines + 1] = label .. ": " .. value end
+      end
+      add("From", format_addresses(message.from))
+      add("Date", type(message.date) == "number" and date.format_long(message.date) or nil)
+      add("Subject", original_subject)
+      add("To", format_addresses(message.to))
+      add("Cc", format_addresses(message.cc))
+      lines[#lines + 1] = ""
+      local body = table.concat(lines, "\n") .. "\n" .. normalize_body(message.body)
+      return {
+         to = "", cc = "", bcc = "", subject = subject, body = body, attachments = vim.deepcopy(files),
+      }
+   end)
+   if not ok then return nil, "Invalid forward: " .. tostring(result) end
    return result
 end
 

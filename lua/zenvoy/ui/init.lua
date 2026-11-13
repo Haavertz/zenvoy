@@ -8,14 +8,26 @@ local command_factory = require("zenvoy.commands")
 local sidebar = require("zenvoy.ui.sidebar")
 local envelope = require("zenvoy.ui.envelope")
 local message = require("zenvoy.ui.message")
+local highlights = require("zenvoy.ui.highlights")
 local activity = require("zenvoy.ui.activity").new()
 local Mailboxes = require("zenvoy.ui.mailboxes")
+local Process = require("zenvoy.core.process")
+local ImageCache = require("zenvoy.core.image_cache")
+local ImageController = require("zenvoy.ui.images")
+local image_preview = require("zenvoy.ui.image_preview")
+local Reader = require("zenvoy.ui.reader")
 local pending_request
 local pending_message
 local message_reader
 local mailbox_loader
+local attachment_downloader
 local composer
 local pending_layout_update
+local image_cache
+local image_controller
+local reader
+-- The message shown in the email pane: { envelope, mailbox, message?, mode, view }.
+local current
 
 local Layout = require("nui.layout")
 
@@ -69,10 +81,25 @@ local function cancel_message()
    local pending = pending_message
    pending_message = nil
    state.open_envelope = nil
+   current = nil
+   if image_controller then image_controller:clear() end
+   if state.email_popup then message.status(state.email_popup, nil) end
    if pending then
       pending.finish()
       if pending.request then pending.request:cancel() end
    end
+end
+
+local function render_options(mode)
+   local options = config.get().reader
+   return { mode = mode, max_width = options.max_width, fold_quotes = options.fold_quotes }
+end
+
+local function render_current()
+   local popup = state.email_popup
+   if not current or not current.message or not popup then return end
+   current.view = message.render(popup, current.message, nil, render_options(current.mode))
+   message.status(popup, nil)
 end
 
 local function open_message(selected)
@@ -80,7 +107,9 @@ local function open_message(selected)
    state.open_envelope = selected
    local popup = state.email_popup
    local mailbox = state.current_folder
-   message.render(popup, selected, "")
+   local opened = { envelope = selected, mailbox = mailbox, mode = config.get().reader.prefer }
+   current = opened
+   message.render(popup, selected, "", render_options(opened.mode))
    local pending = { finish = activity:start("Loading email") }
    pending_message = pending
    local function receive(err, result)
@@ -88,10 +117,13 @@ local function open_message(selected)
       pending_message = nil
       if not pending.finish() or state.email_popup ~= popup or not state.email_visible then return end
       if err then
-         message.render(popup, selected, "Unable to load email.\n" .. err)
+         message.render(popup, selected, "Unable to load email.\n" .. err, render_options(opened.mode))
          vim.notify("Zenvoy: " .. err, vim.log.levels.ERROR)
       else
-         message.render(popup, result)
+         if current == opened then
+            opened.message = result
+            render_current()
+         end
          selected.flags = selected.flags or {}
          local seen = false
          for _, flag in ipairs(selected.flags) do
@@ -108,6 +140,156 @@ local function open_message(selected)
    end
    local ok, request = pcall(message_reader, selected.id, receive, mailbox)
    if ok then pending.request = request else receive(tostring(request)) end
+end
+
+local function email_cursor()
+   local popup = state.email_popup
+   if not state.email_visible or not popup or not popup.winid or not vim.api.nvim_win_is_valid(popup.winid) then
+      return nil
+   end
+   return vim.api.nvim_win_get_cursor(popup.winid)
+end
+
+local function item_under_cursor()
+   local cursor = email_cursor()
+   if not cursor or not current or not current.view then return nil end
+   return message.item_at(current.view, cursor[1], cursor[2])
+end
+
+local function show_image(item)
+   local popup = state.email_popup
+   local cursor = email_cursor()
+   if not cursor then return end
+   if not item then
+      item = item_under_cursor()
+      if not item or item.kind ~= "image" then
+         -- Fall back to an image anywhere on the cursor row.
+         item = nil
+         for _, candidate in ipairs(current and current.view and current.view.items or {}) do
+            if candidate.kind == "image" and candidate.row == cursor[1] - 1 then
+               item = candidate
+               break
+            end
+         end
+      end
+   end
+   local image = item and item.image
+   if not image then
+      if item and item.kind == "image" then
+         vim.notify("Zenvoy: this image has no source that can be displayed", vim.log.levels.INFO)
+      end
+      return
+   end
+   local row = item.row + 1
+
+   if not image_controller then
+      image_cache = ImageCache.new(Process.new({ timeout = config.get().himalaya.timeout }))
+      image_controller = ImageController.new({
+         preview = image_preview,
+         choose = function(items, options, callback) vim.ui.select(items, options, callback) end,
+         load = function(source, callback) return image_cache:load(source, callback) end,
+         activity = function(label) return activity:start(label) end,
+         notify = vim.notify,
+      })
+   end
+   local target = vim.tbl_extend("force", {}, image, {
+      buffer = popup.bufnr,
+      window = popup.winid,
+      row = row,
+   })
+   image_controller:activate(target)
+end
+
+local function get_reader()
+   if not reader then
+      reader = Reader.new({
+         choose = function(items, options, callback) vim.ui.select(items, options, callback) end,
+         input = function(options, callback) vim.ui.input(options, callback) end,
+         open = function(target) return vim.ui.open(target) end,
+         download = function(id, mailbox, ids, directory, callback)
+            if not attachment_downloader then
+               callback("Attachment downloads are not configured")
+               return
+            end
+            return attachment_downloader(id, mailbox, ids, directory, callback)
+         end,
+         activity = function(label) return activity:start(label) end,
+         notify = vim.notify,
+         download_dir = function() return config.get().attachments.download_dir end,
+      })
+   end
+   return reader
+end
+
+local function listed_attachments()
+   local list = {}
+   for _, attachment in ipairs(current and current.message and current.message.attachments or {}) do
+      if not attachment.referenced then list[#list + 1] = attachment end
+   end
+   return list
+end
+
+local function move_to(item)
+   local popup = state.email_popup
+   if not item or not popup or not popup.winid or not vim.api.nvim_win_is_valid(popup.winid) then return end
+   vim.api.nvim_win_set_cursor(popup.winid, { item.row + 1, item.col })
+   -- Reveal targets inside collapsed quotations.
+   vim.api.nvim_win_call(popup.winid, function() vim.cmd("silent! normal! zv") end)
+   message.status(popup, item)
+end
+
+local function reader_action(action)
+   if not current or not state.email_visible or not state.email_popup
+      or vim.api.nvim_get_current_buf() ~= state.email_popup.bufnr then
+      return
+   end
+   local context = { id = current.envelope.id, mailbox = current.mailbox }
+   local item = item_under_cursor()
+   if action == "activate" then
+      if not item then return end
+      if item.kind == "image" then
+         if item.url then
+            vim.ui.select({ "Show image", "Open link", "Copy link", "Cancel" }, {
+               prompt = "Image linking to " .. item.url:gsub("%c", ""),
+            }, function(choice)
+               if choice == "Show image" then
+                  show_image(item)
+               elseif choice == "Open link" then
+                  get_reader():open_link(item.url)
+               elseif choice == "Copy link" then
+                  get_reader():copy_link(item.url)
+               end
+            end)
+         else
+            show_image(item)
+         end
+      elseif item.kind == "link" then
+         get_reader():link_menu(item.url)
+      elseif item.kind == "attachment" and current.message then
+         get_reader():attachment_menu(item.attachment, context)
+      end
+   elseif action == "open_link" then
+      if item and item.url then get_reader():open_link(item.url) end
+   elseif action == "save_attachment" then
+      if not current.message then return end
+      if item and item.kind == "attachment" then
+         get_reader():save(item.attachment, context)
+      else
+         get_reader():save_any(listed_attachments(), context)
+      end
+   elseif action == "toggle_view" then
+      if not current.message then return end
+      if not current.message.has_html then
+         vim.notify("Zenvoy: this email has no HTML version", vim.log.levels.INFO)
+         return
+      end
+      current.mode = current.view and current.view.mode == "html" and "plain" or "html"
+      render_current()
+   elseif action == "next_item" or action == "previous_item" then
+      local cursor = email_cursor()
+      if not cursor or not current.view then return end
+      move_to(message.adjacent_item(current.view, cursor[1], cursor[2], action == "previous_item"))
+   end
 end
 
 local mailboxes = Mailboxes.new({
@@ -173,10 +355,27 @@ local commands = command_factory.create({
    end,
    on_open_email = open_message,
    on_hide_email = cancel_message,
+   on_show_image = function() show_image() end,
+   on_reader = reader_action,
 })
 
+-- Actions on links, images and attachments are mapped in the message pane only, so the
+-- same keys keep their usual meaning in the sidebar and the email list.
+local message_only = {
+   show_image = true, open_link = true, save_attachment = true, toggle_view = true,
+   next_item = true, previous_item = true,
+}
+
 local function apply_keymaps(popup)
-   keymap.apply(popup.bufnr, config.get().keymaps, commands)
+   local mappings = config.get().keymaps
+   if popup ~= state.email_popup then
+      local filtered = {}
+      for lhs, action in pairs(mappings) do
+         if not message_only[action] then filtered[lhs] = action end
+      end
+      mappings = filtered
+   end
+   keymap.apply(popup.bufnr, mappings, commands)
 end
 
 function M.close(force)
@@ -195,13 +394,20 @@ function M.set_mailbox_loader(loader)
    mailbox_loader = loader
 end
 
+---@param downloader fun(id: string, mailbox: string?, ids: string[], directory: string?, callback: fun(err: string?, files: table[]?)): ZenvoyRequest?
+function M.set_attachment_downloader(downloader)
+   attachment_downloader = downloader
+end
+
 function M.set_composer(operations)
    if composer then composer:detach() end
    composer = require("zenvoy.ui.composer").new({
       prepare_reply = operations.prepare_reply,
+      prepare_forward = operations.prepare_forward,
       send = operations.send,
       activity = function(label) return activity:start(label) end,
       notify = vim.notify,
+      input = function(options, callback) vim.ui.input(options, callback) end,
    })
 end
 
@@ -248,7 +454,11 @@ function M.create()
 
    state.sidebar_popup = layout.create_popup("Folders")
    state.listing_popup = layout.create_popup("Emails")
-   state.email_popup = layout.create_popup("", { wrap = true, linebreak = true, cursorline = false })
+   state.email_popup = layout.create_popup("", {
+      wrap = true, linebreak = true, breakindent = true, cursorline = false,
+      foldmethod = "manual", foldenable = true, foldlevel = 0, foldcolumn = "0",
+      foldtext = "v:lua.require'zenvoy.ui.message'.foldtext()", fillchars = "fold: ,eob: ",
+   })
    state.email_visible = false
 
    local main = Layout(
@@ -263,6 +473,7 @@ function M.create()
       create_box()
    )
 
+   highlights.setup()
    state.layout = main
    main:mount()
    state.is_open = true
@@ -285,6 +496,14 @@ function M.create()
    apply_keymaps(state.sidebar_popup)
    apply_keymaps(state.listing_popup)
    apply_keymaps(state.email_popup)
+
+   -- Like a browser status bar: show the destination of the link under the cursor.
+   vim.api.nvim_create_autocmd("CursorMoved", {
+      buffer = state.email_popup.bufnr,
+      callback = function()
+         if state.layout == main and state.email_popup then message.status(state.email_popup, item_under_cursor()) end
+      end,
+   })
 
    vim.api.nvim_create_autocmd("CursorMoved", {
       buffer = state.sidebar_popup.bufnr,

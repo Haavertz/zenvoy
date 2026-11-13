@@ -14,6 +14,8 @@ local M = {}
 ---@field on_compose? fun(options: table) Open the new-message or reply form.
 ---@field request_close? fun(done: function) Guard session closure with an open composer.
 ---@field on_select_mailbox? fun(options?: table) Load the selected sidebar row.
+---@field on_show_image? fun() Render the image under the message cursor.
+---@field on_reader? fun(action: string) Act on the item under the message cursor.
 
 ---@param context ZenvoyCommandContext
 ---@return table
@@ -55,10 +57,16 @@ function M.create(context)
       context.focus(state.listing_popup)
    end
 
-   local function reply(all)
+   local function prepare(options)
       local selected = context.selected_envelope()
       if not selected or not context.on_compose then return end
-      context.on_compose({ id = selected.id, mailbox = state.current_folder, all = all })
+      context.on_compose(vim.tbl_extend("force", { id = selected.id, mailbox = state.current_folder }, options))
+   end
+
+   local function reader(action)
+      return function()
+         if context.on_reader then context.on_reader(action) end
+      end
    end
 
    return {
@@ -67,8 +75,14 @@ function M.create(context)
       compose = function()
          if context.on_compose then context.on_compose({}) end
       end,
-      reply = function() reply(false) end,
-      reply_all = function() reply(true) end,
+      reply = function() prepare({ all = false }) end,
+      reply_all = function() prepare({ all = true }) end,
+      forward = function() prepare({ forward = true }) end,
+      open_link = reader("open_link"),
+      save_attachment = reader("save_attachment"),
+      toggle_view = reader("toggle_view"),
+      next_item = reader("next_item"),
+      previous_item = reader("previous_item"),
    }
 end
 
